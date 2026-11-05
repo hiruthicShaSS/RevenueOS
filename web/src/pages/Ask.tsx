@@ -30,7 +30,10 @@ export default function Ask() {
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [turns, busy]);
+  // Block body on purpose: newer browsers return a Promise from scrollIntoView, which React would treat as a cleanup function.
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [turns, busy]);
 
   async function send(question = q) {
     if (!question.trim() || busy) return;
@@ -113,7 +116,9 @@ export default function Ask() {
                   <MD>{t.r.answer}</MD>
                   {t.r.evidence.length > 0 && (
                     <details className="mt-4 border-t border-line pt-3">
-                      <summary className="cursor-pointer text-xs text-mem">Built on {t.r.evidence.length} memories</summary>
+                      <summary className="cursor-pointer text-xs text-mem">
+                        {t.r.scope === "portfolio" ? `Playbook lessons consulted (${t.r.evidence.length})` : `Built on ${t.r.evidence.length} memories`}
+                      </summary>
                       <div className="mt-3 space-y-2">
                         {t.r.evidence.map((m) => (
                           <MemoryRow key={m.id} m={m} compact />

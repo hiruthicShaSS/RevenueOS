@@ -47,7 +47,7 @@ export async function recordOutcome(p: {
     await memory.ensureCustomerBank(deal.customer_id, deal.customer_name);
     await memory.retain(
       memory.customerBank(deal.customer_id),
-      `Deal "${deal.name}" ($${Number(deal.amount).toLocaleString()}) was ${p.outcome.toUpperCase()} on ${isoDate(now)}. Primary blocker: ${p.primaryBlocker}. Tactics used: ${p.tactics}. Reason: ${p.reason}`,
+      `Deal "${deal.name}" ($${Number(deal.amount).toLocaleString("en-US")}) was ${p.outcome.toUpperCase()} on ${isoDate(now)}. Primary blocker: ${p.primaryBlocker}. Tactics used: ${p.tactics}. Reason: ${p.reason}`,
       { context: `deal outcome — ${deal.customer_name}`, timestamp: now, documentId: `outcome-${deal.id}`, tags: ["kind:outcome"] }
     );
   } catch (e) {

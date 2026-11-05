@@ -98,7 +98,7 @@ export async function ask(question: string, customerId?: string | null, compare 
     `DEALS:`,
     ...deals.map(
       (d: any) =>
-        `- ${d.customer} | ${d.name} | $${Number(d.amount).toLocaleString()} | ${d.stage} ${d.probability}% | close ${d.close_date ? isoDate(d.close_date) : "n/a"} | ${d.status} | risk ${d.risk} | blocker: ${d.primary_blocker ?? "-"} | owner ${d.owner} | last touch ${d.last_touch ? isoDate(d.last_touch) : "never"}`
+        `- ${d.customer} | ${d.name} | $${Number(d.amount).toLocaleString("en-US")} | ${d.stage} ${d.probability}% | close ${d.close_date ? isoDate(d.close_date) : "n/a"} | ${d.status} | risk ${d.risk} | blocker: ${d.primary_blocker ?? "-"} | owner ${d.owner} | last touch ${d.last_touch ? isoDate(d.last_touch) : "never"}`
     ),
     `OPEN COMMITMENTS:`,
     ...commitments.map(

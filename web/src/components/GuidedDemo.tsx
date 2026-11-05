@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Brain, CheckCircle2, ChevronDown, Circle, RotateCcw, Sparkles } from "lucide-react";
 import clsx from "clsx";
@@ -32,7 +32,6 @@ export default function GuidedDemo({ onChange }: { onChange?: () => void }) {
   const done = account?.interactions.length ?? 0;
   const repName = (id: string) => reps?.find((r) => r.id === id)?.name ?? id;
 
-  useEffect(() => setOpen(null), [done]);
 
   async function runStep(i: number) {
     if (!script) return;
@@ -79,6 +78,7 @@ export default function GuidedDemo({ onChange }: { onChange?: () => void }) {
       await api.post("/demo/reset");
       setResults({});
       setAnswer(null);
+      setOpen(null);
       await reload();
       onChange?.();
     } catch (e) {

@@ -70,9 +70,11 @@ export default function AnalysisView({ a }: { a: Analysis }) {
               <div key={i} className="text-[13px] text-soft">
                 <span className="text-white">{s.name}</span>
                 {s.role && <span className="text-mute"> · {s.role}</span>}
-                <Badge className="ml-1.5" tone={s.stance === "champion" || s.stance === "supporter" ? "good" : s.stance === "blocker" || s.stance === "skeptic" ? "bad" : "neutral"}>
-                  {s.stance}
-                </Badge>
+                {s.stance !== "unknown" && (
+                  <Badge className="ml-1.5" tone={s.stance === "champion" || s.stance === "supporter" ? "good" : s.stance === "blocker" || s.stance === "skeptic" ? "bad" : "neutral"}>
+                    {s.stance}
+                  </Badge>
+                )}
                 {s.priorities && <div className="text-xs text-mute">{s.priorities}</div>}
               </div>
             ))}

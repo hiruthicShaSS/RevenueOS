@@ -17,8 +17,12 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   } catch {
     throw new ApiError(0, "Cannot reach the RevenueOS API. Is the server running on port 4000?");
   }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    if (!data && (res.status === 502 || res.status === 503 || res.status === 504))
+      throw new ApiError(res.status, "Cannot reach the RevenueOS API. Is the server running on port 4000?");
+    throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`);
+  }
   return data as T;
 }
 

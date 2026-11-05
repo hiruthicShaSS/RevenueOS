@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { BookOpenCheck, Brain, Building2, Handshake, LayoutDashboard, ListChecks, MessageSquareText, Sparkles } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
+import ErrorBoundary from "./ErrorBoundary";
 import { useApi } from "../hooks";
 import type { Health } from "../api";
 
@@ -16,6 +17,7 @@ const NAV = [
 
 export default function Layout() {
   const { data: health } = useApi<Health>("/health");
+  const location = useLocation();
   return (
     <div className="flex h-full">
       <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-black/40 px-3 py-5 md:flex">
@@ -71,7 +73,9 @@ export default function Layout() {
         )}
         <main className="glow min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-[1280px] px-5 py-7 md:px-8">
-            <Outlet />
+            <ErrorBoundary resetKey={location.pathname}>
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </main>
       </div>

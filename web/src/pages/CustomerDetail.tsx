@@ -48,7 +48,7 @@ export default function CustomerDetail() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <LogInteraction customerId={c.id} onDone={reload} />
+          <LogInteraction customerId={c.id} defaultRepId={deal?.owner_id ?? "rep_priya"} onDone={reload} />
           <Card title="Interaction history" subtitle="Each one is retained in this account's Hindsight bank">
             {data.interactions.length === 0 ? (
               <Empty title="No interactions yet">Log a meeting, call or email above. RevenueOS will extract facts and start remembering.</Empty>
@@ -87,7 +87,9 @@ export default function CustomerDetail() {
                   <div key={s.id}>
                     <div className="flex items-center gap-2 text-[13px]">
                       <span className="font-medium text-white">{s.name}</span>
-                      <Badge tone={s.stance === "champion" || s.stance === "supporter" ? "good" : s.stance === "blocker" || s.stance === "skeptic" ? "bad" : "neutral"}>{s.stance}</Badge>
+                      {s.stance && s.stance !== "unknown" && (
+                        <Badge tone={s.stance === "champion" || s.stance === "supporter" ? "good" : s.stance === "blocker" || s.stance === "skeptic" ? "bad" : "neutral"}>{s.stance}</Badge>
+                      )}
                     </div>
                     <div className="text-xs text-mute">{s.role}</div>
                     {s.priorities && <div className="text-xs text-soft">{s.priorities}</div>}
@@ -116,9 +118,9 @@ export default function CustomerDetail() {
           <Card title="Objections & offers">
             <div className="space-y-2">
               {data.objections.map((o) => (
-                <div key={o.id} className="text-[13px] text-soft">
-                  <Badge tone="bad" className="mr-1.5">
-                    {o.category}
+                <div key={o.id} className={clsx("text-[13px]", o.status === "resolved" ? "text-mute line-through" : "text-soft")}>
+                  <Badge tone={o.status === "resolved" ? "good" : "bad"} className="mr-1.5">
+                    {o.status === "resolved" ? "resolved" : o.category}
                   </Badge>
                   {o.description}
                 </div>
@@ -140,9 +142,9 @@ export default function CustomerDetail() {
   );
 }
 
-function LogInteraction({ customerId, onDone }: { customerId: string; onDone: () => void }) {
+function LogInteraction({ customerId, defaultRepId, onDone }: { customerId: string; defaultRepId: string; onDone: () => void }) {
   const { data: reps } = useApi<Rep[]>("/reps");
-  const [repId, setRepId] = useState("rep_priya");
+  const [repId, setRepId] = useState(defaultRepId);
   const [kind, setKind] = useState("meeting");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [text, setText] = useState("");

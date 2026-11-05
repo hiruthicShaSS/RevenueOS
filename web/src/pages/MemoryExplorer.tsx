@@ -25,7 +25,8 @@ const TYPES = [
 
 export default function MemoryExplorer() {
   const [params, setParams] = useSearchParams();
-  const customerId = params.get("customer") ?? "cus_halcyon";
+  const lastForDefault = useLastRetrieval();
+  const customerId = params.get("customer") ?? lastForDefault?.customerId ?? "cus_halcyon";
   const { data: customers } = useApi<{ id: string; name: string }[]>("/customers");
   const { data, error, loading, reload } = useApi<MemoryData>(`/customers/${customerId}/memory`, [customerId]);
   const last = useLastRetrieval();
@@ -48,7 +49,8 @@ export default function MemoryExplorer() {
     const pair = new Map<string, number>();
     const mentions = new Map<string, number>();
     for (const m of data?.items ?? []) {
-      const ents = [...new Set(m.entities.filter((e) => names.has(e) || [...names].some((n) => e.includes(n.split(" ")[0]))))];
+      const canonical = (e: string) => (names.has(e) ? e : [...names].find((n) => n.split(" ")[0] === e || e.startsWith(n)) ?? null);
+      const ents = [...new Set(m.entities.map(canonical).filter((e): e is string => !!e))];
       ents.forEach((e) => mentions.set(e, (mentions.get(e) ?? 0) + 1));
       for (let i = 0; i < ents.length; i++)
         for (let j = i + 1; j < ents.length; j++) {
@@ -158,7 +160,7 @@ export default function MemoryExplorer() {
             {probe.hits.map((h, i) => (
               <div key={h.id} className="grid grid-cols-[1fr_150px] items-start gap-3">
                 <MemoryRow m={h} refLabel={`#${i + 1}`} compact />
-                <ScoreBars h={h} />
+                <ScoreBars h={h} maxKeyword={Math.max(1, ...probe.hits.map((x) => x.scoreBreakdown?.keyword ?? 0))} />
               </div>
             ))}
           </div>
@@ -263,7 +265,7 @@ function MiniStat({ label, value, hint }: { label: string; value: React.ReactNod
   );
 }
 
-function ScoreBars({ h }: { h: MemoryHit }) {
+function ScoreBars({ h, maxKeyword }: { h: MemoryHit; maxKeyword: number }) {
   const rows: [string, number | null | undefined][] = [
     ["final", h.score],
     ["semantic", h.scoreBreakdown?.semantic],
@@ -278,7 +280,8 @@ function ScoreBars({ h }: { h: MemoryHit }) {
           <div key={k} className="flex items-center gap-2 text-[10px] text-mute">
             <span className="w-12">{k}</span>
             <div className="h-1 flex-1 overflow-hidden rounded bg-white/5">
-              <div className={clsx("h-full", k === "final" ? "bg-mem" : "bg-accent-2/70")} style={{ width: `${Math.max(2, Math.min(100, (v as number) * 100))}%` }} />
+              {/* keyword is an unbounded BM25 score, so scale it against the best hit in this result set */}
+              <div className={clsx("h-full", k === "final" ? "bg-mem" : "bg-accent-2/70")} style={{ width: `${Math.max(2, Math.min(100, ((v as number) / (k === "keyword" ? maxKeyword : 1)) * 100))}%` }} />
             </div>
             <span className="w-8 text-right font-mono">{(v as number).toFixed(2)}</span>
           </div>

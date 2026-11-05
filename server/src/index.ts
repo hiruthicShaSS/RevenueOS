@@ -2,7 +2,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import cors from "cors";
 import { z } from "zod";
 import { config } from "./config.js";
-import { getDb } from "./db.js";
+import { closeDb, getDb } from "./db.js";
 import { memory } from "./memory/index.js";
 import { errMsg } from "./memory/hindsightStore.js";
 import { LlmError } from "./llm.js";
@@ -191,14 +191,32 @@ async function main() {
   if (process.argv.includes("--seed-memory")) {
     console.log("Seeding Hindsight memory…");
     await seedMemory();
+    await closeDb();
     process.exit(0);
   }
   const mem = await memory.health();
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     console.log(`RevenueOS API on http://localhost:${config.port}`);
     console.log(`Memory: ${memory.mode} — ${mem.detail}`);
     if (!config.llm.apiKey) console.warn("WARNING: LLM_API_KEY not set — analysis and negotiation will fail.");
   });
+  server.on("error", async (e: any) => {
+    console.error(e?.code === "EADDRINUSE" ? `Port ${config.port} is already in use. Is another RevenueOS server running?` : e);
+    await closeDb();
+    process.exit(1);
+  });
+
+  // Close the embedded database cleanly on Ctrl-C / stop so it is never left half-written.
+  let stopping = false;
+  const shutdown = async (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`${signal} received, closing database…`);
+    server.close();
+    await closeDb().catch((e) => console.error("Error closing database:", e));
+    process.exit(0);
+  };
+  for (const sig of ["SIGINT", "SIGTERM", "SIGBREAK"] as const) process.on(sig, () => void shutdown(sig));
 }
 
 main().catch((e) => {

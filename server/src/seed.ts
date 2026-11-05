@@ -50,7 +50,7 @@ const HISTORY = [
   ["cus_brightwater", "rep_priya", "meeting", 27, "Met Brightwater's ops leadership. Karen Lindqvist (COO) is the champion — failed FDA cold-chain audit at their Mankato plant is the trigger. Budget approved at $140k. Legal redlines expected next week."],
   ["cus_brightwater", "rep_priya", "email", 9, "Brightwater legal returned redlines: liability cap at 12 months fees and a data residency clause (US only). Both acceptable. Karen says the PO goes to the board finance committee on the 18th."],
   ["cus_solace", "rep_jordan", "meeting", 22, "Solace salvage ops team demo. Raj Malhotra (Director, Claims Ops) liked the exception workflow. They currently use LogiTrack, contract renews in January; LogiTrack offered a 30% renewal discount to keep them."],
-  ["cus_solace", "rep_jordan", "call", 11, "Raj said finance (Diane Foster, CFO) is anchored on LogiTrack's discounted price. I offered 10% off year one; Diane rejected it, said switching cost is the real concern, not license price. I promised a migration cost analysis by end of next week."],
+  ["cus_solace", "rep_jordan", "call", 11, "Raj said finance (Diane Foster, CFO) is anchored on LogiTrack's discounted price. I offered 10% off year one; Diane rejected it, said switching cost is the real concern, not license price. I promised a migration cost analysis within two weeks."],
   ["cus_kestrel", "rep_marcus", "call", 16, "Intro call with Kestrel's logistics manager, Ben Okafor. They track supplier shipments by email and a shared Excel sheet. Engineering-led buying: quality team must validate data accuracy before anything goes to budget."],
   ["cus_pinecrest", "rep_jordan", "meeting", 13, "Pinecrest ops review with Lisa Tran (VP Operations). 28 branches order supplies independently. They want approval workflows and a simple UI; price sensitivity is real — board caps new software at $75k/yr."],
   ["cus_tidewater", "rep_marcus", "call", 41, "First call with Tidewater. Carlos Mendes (Logistics Lead) manages equipment moves to 30 remote sites. Interested but no budget until next fiscal year in April."],
@@ -70,7 +70,7 @@ const STAKEHOLDERS = [
 // [customer, owner, promisedTo, description, dueOffsetDays, status]
 const COMMITMENTS = [
   ["cus_meridian", "Marcus Chen", "Tom Becker", "Return completed security questionnaire and SOC 2 bridge letter", -5, "open"],
-  ["cus_solace", "Jordan Blake", "Diane Foster", "Send migration cost analysis vs LogiTrack", 2, "open"],
+  ["cus_solace", "Jordan Blake", "Diane Foster", "Send migration cost analysis vs LogiTrack", 3, "open"],
   ["cus_brightwater", "Priya Nair", "Karen Lindqvist", "Send countersigned redlines before finance committee", 4, "open"],
   ["cus_pinecrest", "Jordan Blake", "Lisa Tran", "Share approval-workflow demo recording", -2, "open"],
   ["cus_brightwater", "Priya Nair", "Karen Lindqvist", "Provide FDA audit trail sample report", -12, "done"],

@@ -43,6 +43,7 @@ export const AnalysisSchema = z.object({
     )
     .default([]),
   fulfilled_commitment_ids: z.array(z.string()).default([]),
+  resolved_objection_ids: z.array(z.string()).default([]),
   requirements: z.array(z.string()).default([]),
   connections: z.array(z.object({ memory_ref: z.string(), explanation: z.string() })).default([]),
   contradictions: z
@@ -109,6 +110,8 @@ export async function ingestInteraction(input: IngestInput) {
       ``,
       `STRUCTURED CRM STATE BEFORE THIS INTERACTION:`,
       snapshotToText(snapshot),
+      `Open objections (ids):`,
+      ...(snapshot.objections.filter((o: any) => o.status === "open").map((o: any) => `  [O:${o.id}] (${o.category}) ${o.description}${o.raised_by ? ` — ${o.raised_by}` : ""}`)),
       ``,
       `WHAT LONG-TERM MEMORY ALREADY KNOWS (recalled from Hindsight, most relevant first):`,
       refs.length ? refs.map(({ ref, m }) => `[${ref}] (${m.occurredAt?.slice(0, 10) ?? "undated"}) ${m.text}`).join("\n") : "(nothing yet — this is the first interaction we remember)",
@@ -120,8 +123,9 @@ export async function ingestInteraction(input: IngestInput) {
       `summary (1-2 sentences), facts (atomic durable facts), stakeholders [{name, role, stance, priorities}],`,
       `objections [{category: pricing|integration|implementation|security|competition|timing|authority|product_gap|other, description, raised_by}],`,
       `offers [{description, discount_pct, response: accepted|rejected|pending|countered}] — include offers the customer responds to in this interaction,`,
-      `commitments [{owner, promised_to, description, due_date (YYYY-MM-DD or null), direction: ours|theirs}],`,
+      `commitments [{owner, promised_to, description, due_date (YYYY-MM-DD or null), direction: ours|theirs}] — only NEW promises made in this interaction; never repeat one already in the CRM list or one this interaction says was delivered,`,
       `fulfilled_commitment_ids (ids from the CRM list, only if this interaction shows one was delivered),`,
+      `resolved_objection_ids (ids from the open objections list that this interaction clearly shows no longer apply),`,
       `requirements (buying requirements), connections [{memory_ref (e.g. M2), explanation of how the new interaction relates}],`,
       `contradictions [{previously, now, memory_ref, significance}] — where new info changes or conflicts with what we knew,`,
       `primary_blocker (the real reason the deal is not closing, given ALL evidence), risk: low|medium|high, sentiment, next_actions [{action, owner, why}].`,
@@ -172,7 +176,10 @@ export async function ingestInteraction(input: IngestInput) {
     );
   }
   const newCommitments = [];
+  // Backstop for the model re-listing a promise that is already tracked (or was just delivered).
+  const tracked = snapshot.commitments.map((c: any) => c.description as string);
   for (const c of analysis.commitments) {
+    if (tracked.some((t) => similar(t, c.description))) continue;
     const due = c.due_date && /^\d{4}-\d{2}-\d{2}$/.test(c.due_date) ? c.due_date : null;
     const cid = id("cmt");
     await db.query(
@@ -182,8 +189,13 @@ export async function ingestInteraction(input: IngestInput) {
     );
     newCommitments.push({ id: cid, ...c, due_date: due });
   }
+  const openObjectionIds = new Set(snapshot.objections.filter((o: any) => o.status === "open").map((o: any) => o.id));
+  const resolvedObjections = analysis.resolved_objection_ids.map((x) => x.replace(/^O:/, "")).filter((x) => openObjectionIds.has(x));
+  for (const oid of resolvedObjections) {
+    await db.query(`UPDATE objections SET status='resolved' WHERE id=$1`, [oid]);
+  }
   const validIds = new Set(snapshot.commitments.map((c: any) => c.id));
-  for (const cid of analysis.fulfilled_commitment_ids.filter((x) => validIds.has(x))) {
+  for (const cid of analysis.fulfilled_commitment_ids.map((x) => x.replace(/^C:/, "")).filter((x) => validIds.has(x))) {
     await db.query(`UPDATE commitments SET status='done', completed_at=$2 WHERE id=$1`, [cid, occurredAt.toISOString()]);
   }
   await db.query(
@@ -222,7 +234,18 @@ export async function ingestInteraction(input: IngestInput) {
     recalledCount: prior.length,
     analysis: { ...analysis, connections, contradictions },
     newCommitments,
+    resolvedObjections,
   };
+}
+
+function similar(a: string, b: string) {
+  const tok = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2));
+  const x = tok(a);
+  const y = tok(b);
+  if (!x.size || !y.size) return false;
+  let inter = 0;
+  x.forEach((w) => y.has(w) && inter++);
+  return inter / (x.size + y.size - inter) >= 0.6;
 }
 
 export async function retainInteraction(p: {
@@ -245,11 +268,9 @@ export async function retainInteraction(p: {
       timestamp: p.occurredAt,
       documentId: p.interactionId,
       tags: [`kind:${p.kind}`, `rep:${p.repName}`],
-      entities: [
-        { text: p.customerName, type: "ORGANIZATION" },
-        { text: p.repName, type: "PERSON" },
-        ...p.stakeholderNames.map((n) => ({ text: n, type: "PERSON" })),
-      ],
+      // Only the account itself. Entities passed here are attached to every fact extracted from
+      // this interaction, so people are left to Hindsight's per-fact entity extraction instead.
+      entities: [{ text: p.customerName, type: "ORGANIZATION" }],
       metadata: { interaction_id: p.interactionId, rep: p.repName, kind: p.kind },
     }
   );

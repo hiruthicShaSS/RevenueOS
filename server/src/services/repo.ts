@@ -44,7 +44,7 @@ export function snapshotToText(s: Awaited<ReturnType<typeof getAccountSnapshot>>
   const lines = [
     `Account: ${s.customer.name} (${s.customer.industry}, ~${s.customer.employees} employees, ${s.customer.hq})`,
     deal
-      ? `Open deal: ${deal.name}, $${Number(deal.amount).toLocaleString()} ARR, stage ${deal.stage}, owner ${deal.owner_name}`
+      ? `Open deal: ${deal.name}, $${Number(deal.amount).toLocaleString("en-US")} ARR, stage ${deal.stage}, owner ${deal.owner_name}`
       : "No open deal.",
     `Stakeholders: ${s.stakeholders.map((x: any) => `${x.name} (${x.role ?? "?"}, ${x.stance ?? "unknown"})`).join("; ") || "none recorded"}`,
     `Commitments tracked in CRM:`,

@@ -6,7 +6,8 @@
     "start": "tsx src/index.ts",
     "seed:memory": "tsx src/index.ts --seed-memory",
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "tsc",
+    "test:e2e": "tsx --test --test-concurrency=1 test/e2e.test.ts"
   },
   "type": "module",
   "dependencies": {

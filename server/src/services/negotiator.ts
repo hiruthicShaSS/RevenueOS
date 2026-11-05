@@ -56,7 +56,16 @@ export async function negotiationBrief(customerId: string, proposal?: string) {
     const prev = merged.get(h.id);
     if (!prev || (h.score ?? 0) > (prev.score ?? 0)) merged.set(h.id, h);
   });
-  const accountMem = [...merged.values()].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 24);
+  const seen = new Set<string>();
+  const accountMem = [...merged.values()]
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .filter((m) => {
+      const key = m.text.split("|")[0].toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 24);
 
   const openDeal = snapshot.deals.find((d: any) => d.status === "open");
   let playbookMem: MemoryHit[] = [];

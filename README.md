@@ -79,6 +79,24 @@ The Overview page has a three-step guided scenario on **Halcyon Logistics**:
 
 The answer connects both conversations. Pricing was the stated objection, but a bigger discount was still rejected. The real blocker is implementation confidence, and the integration docs promised for that Friday were never sent. Step 3 also works after restarting the server, because it reads from Hindsight rather than from session state. **Reset** deletes the account's memory bank so the scenario can be run again.
 
+## Tests
+
+```bash
+npm --prefix server run test:e2e
+```
+
+The end-to-end suite (`server/test/e2e.test.ts`, 17 tests) runs against real Hindsight and the real LLM, with no mocks. It starts its own server on a spare port with a throwaway database and a unique Hindsight bank prefix, and deletes every bank it created when it finishes, so your data is never touched. It covers:
+
+- input validation and error responses on every endpoint
+- the full memory scenario: extraction, "by Friday" resolving to the correct date, recall across reps, and the real blocker moving off pricing
+- persistence across a **full server restart**
+- isolation: one customer's bank never returns another customer's facts
+- promise tracking and completion being written back to memory
+- negotiator citation integrity: every cited ref resolves to real evidence
+- portfolio questions, deal outcomes teaching the playbook, and demo reset
+
+A run takes about two minutes and uses LLM and Hindsight credits.
+
 ## Project layout
 
 ```

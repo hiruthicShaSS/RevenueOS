@@ -17,7 +17,9 @@ export default function Negotiator() {
   const [result, setResult] = useState<BriefResult | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
 
-  useEffect(() => setResult(null), [customerId]);
+  useEffect(() => {
+    setResult(null);
+  }, [customerId]);
 
   async function run() {
     setBusy(true);
@@ -190,12 +192,15 @@ function Item({ n, title, why, ev, onEv, focus, tone, badge }: { n?: number; tit
 
 function EvidencePanel({ evidence, focus }: { evidence: Evidence; focus: string | null }) {
   const entries = Object.entries(evidence);
+  useEffect(() => {
+    if (focus) document.getElementById(`ev-${focus}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [focus]);
   return (
     <div className="lg:sticky lg:top-4 lg:self-start">
       <Card title="Evidence" subtitle="M = account memory · C = CRM promise · P = playbook lesson">
         <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
           {entries.map(([ref, e]) => (
-            <div key={ref} className={clsx("rounded-xl border p-3 transition", focus === ref ? "border-mem bg-mem/10" : "border-line bg-white/[0.015]")}>
+            <div key={ref} id={`ev-${ref}`} className={clsx("rounded-xl border p-3 transition", focus === ref ? "border-mem bg-mem/10" : "border-line bg-white/[0.015]")}>
               <div className="flex items-center gap-1.5 text-[11px] text-mute">
                 <span className="font-mono text-white">{ref}</span>
                 {e.kind === "commitment" ? (

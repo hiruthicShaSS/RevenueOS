@@ -94,7 +94,7 @@ export default function Playbook() {
 }
 
 function RecordOutcome({ onDone }: { onDone: () => void }) {
-  const { data } = useApi<{ deals: Deal[] }>("/overview");
+  const { data, reload: reloadDeals } = useApi<{ deals: Deal[] }>("/overview");
   const open = (data?.deals ?? []).filter((d) => d.status === "open");
   const [dealId, setDealId] = useState("");
   const [outcome, setOutcome] = useState<"won" | "lost">("won");
@@ -116,6 +116,7 @@ function RecordOutcome({ onDone }: { onDone: () => void }) {
       setTactics("");
       setReason("");
       onDone();
+      reloadDeals();
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {

@@ -32,8 +32,10 @@ export async function getDb(): Promise<Db> {
   } else {
     const { PGlite } = await import("@electric-sql/pglite");
     fs.mkdirSync(config.dataDir, { recursive: true });
+    acquireLock(config.dataDir);
     const lite = new PGlite(config.dataDir);
     await lite.waitReady;
+    closeHook = () => lite.close();
     db = {
       async query(sql, params) {
         const r = await lite.query(sql, params as any[]);
@@ -46,6 +48,49 @@ export async function getDb(): Promise<Db> {
   }
   await migrate(db);
   return db;
+}
+
+let closeHook: (() => Promise<void>) | null = null;
+let lockPath: string | null = null;
+
+/**
+ * PGlite has no cross-process locking: two servers opening the same data
+ * directory corrupt it. Refuse to start if another live process holds it.
+ */
+function acquireLock(dir: string) {
+  lockPath = `${dir}.lock`;
+  try {
+    const pid = Number(fs.readFileSync(lockPath, "utf8"));
+    if (pid && pid !== process.pid && isAlive(pid)) {
+      throw new Error(
+        `Database ${dir} is already in use by process ${pid}. Stop that server first ` +
+          `(two servers on one embedded database would corrupt it).`
+      );
+    }
+  } catch (e: any) {
+    if (e?.code !== "ENOENT") throw e;
+  }
+  fs.writeFileSync(lockPath, String(process.pid));
+}
+
+function isAlive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e: any) {
+    return e?.code === "EPERM";
+  }
+}
+
+/** Flush and close the embedded database so it is never left half-written. */
+export async function closeDb() {
+  try {
+    await closeHook?.();
+  } finally {
+    closeHook = null;
+    db = null;
+    if (lockPath) fs.rmSync(lockPath, { force: true });
+  }
 }
 
 async function migrate(d: Db) {
