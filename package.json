@@ -1,0 +1,16 @@
+{
+  "name": "revenueos",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix web install",
+    "dev": "concurrently -n api,web -c magenta,cyan \"npm --prefix server run dev\" \"npm --prefix web run dev\"",
+    "seed:memory": "npm --prefix server run seed:memory",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix web exec tsc -b",
+    "hindsight:up": "node scripts/hindsight-up.mjs",
+    "hindsight:logs": "docker logs -f revenueos-hindsight",
+    "hindsight:down": "docker rm -f revenueos-hindsight"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}
