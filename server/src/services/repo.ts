@@ -24,7 +24,7 @@ export async function getAccountSnapshot(customerId: string, asOf = new Date()) 
     db.query(`SELECT * FROM objections WHERE customer_id=$1 ORDER BY created_at`, [customerId]),
     db.query(`SELECT * FROM offers WHERE customer_id=$1 ORDER BY created_at`, [customerId]),
     db.query(
-      `SELECT i.id, i.kind, i.occurred_at, i.raw_text, i.analysis, i.memory_status, i.memory_error, r.name AS rep_name
+      `SELECT i.id, i.kind, i.occurred_at, i.raw_text, i.analysis, i.memory_status, i.memory_error, r.name AS rep_name, r.title AS rep_title
        FROM interactions i LEFT JOIN reps r ON r.id=i.rep_id
        WHERE customer_id=$1 ORDER BY occurred_at DESC`,
       [customerId]

@@ -32,6 +32,9 @@ export const config = {
   /** Postgres connection string. Empty = embedded Postgres (PGlite) persisted to dataDir. */
   databaseUrl: env("DATABASE_URL"),
   dataDir: path.resolve(env("DATA_DIR", path.join(process.cwd(), "data", "pg"))),
+
+  /** Built web app (web/dist) to serve from this server, so one process hosts UI + API. Empty = API only. */
+  webDist: env("WEB_DIST") ? path.resolve(env("WEB_DIST")) : "",
 };
 
 export type Config = typeof config;

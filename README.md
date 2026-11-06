@@ -8,10 +8,11 @@ RevenueOS is a sales intelligence and deal negotiation workspace for B2B account
 
 | Feature | What memory adds |
 |---|---|
+| **Team sign-in** | Each teammate signs in with their work email and designation. Everything they log carries their name and role, and all of it goes into one shared memory per customer, so whoever negotiates next starts with what the whole team has heard. |
+| **Home: Ask + overview** | One page with a large Ask box at the top and the pipeline below: metrics, AI insights, promises coming due, charts, the team, and open deals. Account questions run Hindsight `reflect` on that account's bank only and return a cited answer; "I" and "my" in a question mean the signed-in teammate. A toggle shows what a stateless LLM would say to the same question. |
 | **Log an interaction** | Before analysing new notes, RevenueOS *recalls* what it already knows about the account, so the AI can flag what changed ("they asked for 15%, now 20% is not enough") and link the new call to earlier ones. |
-| **Deal Negotiator** | Multi-angle recall (pricing, objections, technical needs, promises) plus cross-deal lessons. Every "do / don't" cites the exact memories (M#), CRM promises (C#), and playbook lessons (P#) behind it. |
+| **Deal Negotiator** | Multi-angle recall (pricing, objections, technical needs, promises) over notes logged by every teammate on the account, plus cross-deal lessons. The brief shows whose notes it draws on, and every "do / don't" cites the exact memories (M#), CRM promises (C#), and playbook lessons (P#) behind it. |
 | **Never forget a promise** | Commitments ("I'll send the SAP docs by Friday") are extracted with owner, recipient, and due date. When a promise is kept, that fact is written back to memory. |
-| **Ask RevenueOS** | Account questions run Hindsight `reflect` on that account's bank only and return a cited answer. A toggle shows what a stateless LLM would say to the same question. |
 | **Memory Explorer** | Shows what Hindsight stores for an account: facts, interactions, consolidated observations, superseded memories, entity links, and a live recall probe with semantic/keyword/rerank scores. |
 | **Playbook** | Closing a deal writes an anonymised lesson (industry, blocker, tactics, outcome) to a shared bank. A Hindsight mental model keeps "what wins, by blocker" up to date, and the negotiator uses it on every other account. |
 
@@ -69,15 +70,26 @@ CRM data uses embedded Postgres (PGlite) by default and is stored in `server/dat
 
 `MEMORY_MODE=mock` swaps Hindsight for a naive keyword store. It exists only for offline UI work, and the UI shows a banner whenever it's active.
 
+## Deploying with Docker
+
+The `Dockerfile` builds one image that serves both the web app and the API on port 4000 (the server serves the built UI when `WEB_DIST` is set). `deploy/docker-compose.yml` runs it next to a Postgres container for the CRM data; memory stays in Hindsight Cloud.
+
+```bash
+python scripts/deploy.py --seed-memory   # first deploy
+python scripts/deploy.py                 # later deploys
+```
+
+The script builds the image locally, streams it to the server over ssh (`docker save | gzip | docker load`), uploads the compose file and `restart.py` to `~/services/revenueos`, and starts the stack on `127.0.0.1:1039`. On the first run it creates the server `.env` from `deploy/.env.example`, copying the API keys from `server/.env` and generating a database password; after that the server's `.env` is left alone unless you pass `--new-env`. Production uses its own Hindsight bank prefix (`revenueos-prod`), so it never mixes with local data. Point a tunnel or reverse proxy at `http://localhost:1039`.
+
 ## The memory test
 
-The Overview page has a three-step guided scenario on **Halcyon Logistics**:
+Run it with two teammates, for example in two browsers (or a normal and a private window), since each browser keeps its own session. The seeded teammates can sign in with their emails: `priya.nair@revenueos.app` and `marcus.chen@revenueos.app`. Any other email creates a new teammate.
 
-1. **Priya** logs a meeting. The CFO (Sarah Whitman) says the price is too high and asks for 15% off. The CTO (David Okafor) needs SAP integration and a go-live under 30 days. Priya promises the integration docs by Friday.
-2. Two weeks later, **Marcus**, a different rep, logs a call. Even a 20% discount doesn't convince them, they're worried about implementation complexity, and David asks about automated SAP sync.
-3. Then the question: *"Why is Halcyon Logistics not closing? What should I do next?"*
+1. **Priya** opens **Halcyon Logistics** and logs a meeting. The CFO (Sarah Whitman) says the price is too high and asks for 15% off. The CTO (David Okafor) needs SAP integration and a go-live under 30 days. Priya promises the integration docs by Friday.
+2. **Marcus**, signed in separately, logs a later call (set the date two weeks on). Even a 20% discount doesn't convince them, they're worried about implementation complexity, and David asks about automated SAP sync.
+3. Either of them asks on Home: *"Why is Halcyon Logistics not closing? What should I do next?"*, or opens the Deal Negotiator, which lists both teammates as sources.
 
-The answer connects both conversations. Pricing was the stated objection, but a bigger discount was still rejected. The real blocker is implementation confidence, and the integration docs promised for that Friday were never sent. Step 3 also works after restarting the server, because it reads from Hindsight rather than from session state. **Reset** deletes the account's memory bank so the scenario can be run again.
+The answer connects both conversations. Pricing was the stated objection, but a bigger discount was still rejected. The real blocker is implementation confidence, and the integration docs promised for that Friday were never sent. Step 3 also works after restarting the server, because it reads from Hindsight rather than from session state. The meeting texts are in `demoScript()` in `server/src/seed.ts`, and `POST /api/demo/reset` deletes the account's CRM rows and memory bank so the scenario can be run again.
 
 ## Tests
 
@@ -85,14 +97,15 @@ The answer connects both conversations. Pricing was the stated objection, but a 
 npm --prefix server run test:e2e
 ```
 
-The end-to-end suite (`server/test/e2e.test.ts`, 17 tests) runs against real Hindsight and the real LLM, with no mocks. It starts its own server on a spare port with a throwaway database and a unique Hindsight bank prefix, and deletes every bank it created when it finishes, so your data is never touched. It covers:
+The end-to-end suite (`server/test/e2e.test.ts`, 20 tests) runs against real Hindsight and the real LLM, with no mocks. It starts its own server on a spare port with a throwaway database and a unique Hindsight bank prefix, and deletes every bank it created when it finishes, so your data is never touched. It covers:
 
+- sign-in: every API needs a session, new teammates are created from their email, known emails reuse their profile, logout ends only that session
 - input validation and error responses on every endpoint
-- the full memory scenario: extraction, "by Friday" resolving to the correct date, recall across reps, and the real blocker moving off pricing
+- the full memory scenario with two signed-in teammates: extraction, "by Friday" resolving to the correct date, recall across teammates, attribution of each note, and the real blocker moving off pricing
 - persistence across a **full server restart**
 - isolation: one customer's bank never returns another customer's facts
 - promise tracking and completion being written back to memory
-- negotiator citation integrity: every cited ref resolves to real evidence
+- negotiator citation integrity (every cited ref resolves to real evidence) and that the brief draws on both teammates' notes
 - portfolio questions, deal outcomes teaching the playbook, and demo reset
 
 A run takes about two minutes and uses LLM and Hindsight credits.
@@ -105,11 +118,12 @@ server/   Express + TypeScript API
   src/services/    ingest, negotiator, ask, playbook, dashboard
   src/seed.ts      realistic accounts, history, playbook lessons, demo script
 web/      React + TypeScript + Tailwind + Recharts
-  src/pages/       Overview, Customers, Negotiator, Commitments, Ask, Memory Explorer, Playbook
+  src/pages/       Login, Home (Ask + overview), Customers, Negotiator, Commitments, Memory Explorer, Playbook
 ```
 
 ## Limitations
 
+- Sign-in identifies teammates by email and designation only; there is no password or email verification. It is meant for a trusted team workspace, and real deployments should put it behind SSO.
 - Extraction quality depends on the LLM. Every structured output is validated with zod and retried, with a fallback model, because open models sometimes return malformed JSON.
 - Hindsight's own retain, consolidation and reflect also call an LLM, so storing an interaction takes 10–15 seconds. On Groq's free tier (8k tokens/minute per model), the app and Hindsight run on different models so they don't share a budget, and `hindsight:up` sets `HINDSIGHT_API_LLM_GROQ_SERVICE_TIER=on_demand` because the free plan rejects Hindsight's default `auto` tier. Even so, `reflect` (several ~5k-token calls per question) often exceeds the free limit. When Hindsight reports a provider quota, Ask falls back to Hindsight `recall` plus the app's model, and the UI labels which engine answered. A paid Groq tier or Hindsight Cloud removes this limit.
 - Portfolio-wide questions are answered from structured CRM data plus the playbook bank, not from per-account memories. That's a deliberate trade-off to keep customer banks isolated.

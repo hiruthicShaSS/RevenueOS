@@ -6,14 +6,21 @@ export class ApiError extends Error {
   }
 }
 
+// ---- session ----
+const TOKEN_KEY = "revenueos.token";
+export const getToken = () => localStorage.getItem(TOKEN_KEY);
+export const setToken = (t: string | null) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
+/** Fired when the server says the session is gone, so the app can show the sign-in screen. */
+export const SIGNED_OUT_EVENT = "revenueos:signed-out";
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
+  const headers: Record<string, string> = {};
+  if (body) headers["Content-Type"] = "application/json";
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
   try {
-    res = await fetch(`/api${path}`, {
-      method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    res = await fetch(`/api${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
   } catch {
     throw new ApiError(0, "Cannot reach the RevenueOS API. Is the server running on port 4000?");
   }
@@ -21,6 +28,10 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   if (!res.ok) {
     if (!data && (res.status === 502 || res.status === 503 || res.status === 504))
       throw new ApiError(res.status, "Cannot reach the RevenueOS API. Is the server running on port 4000?");
+    if (res.status === 401 && path !== "/auth/login") {
+      setToken(null);
+      window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
+    }
     throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`);
   }
   return data as T;
@@ -90,6 +101,21 @@ export interface Rep {
   id: string;
   name: string;
   title: string;
+  email?: string | null;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  title: string;
+  email: string;
+}
+
+export interface Contributor {
+  name: string;
+  title: string;
+  interactions: number;
+  last: string;
 }
 
 export interface Analysis {
@@ -127,6 +153,7 @@ export interface Interaction {
   memory_status: string;
   memory_error: string | null;
   rep_name: string;
+  rep_title?: string | null;
 }
 
 export interface AccountSnapshot {
@@ -161,6 +188,7 @@ export interface BriefResult {
   brief?: Brief;
   evidence: Evidence;
   recalled?: { account: number; playbook: number };
+  contributors?: Contributor[];
   errors: string[];
 }
 

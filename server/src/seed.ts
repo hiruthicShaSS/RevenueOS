@@ -11,10 +11,10 @@ const daysAgo = (n: number) => new Date(Date.now() - n * 864e5);
 const daysAhead = (n: number) => isoDate(new Date(Date.now() + n * 864e5));
 
 const REPS = [
-  ["rep_priya", "Priya Nair", "Senior Account Executive"],
-  ["rep_marcus", "Marcus Chen", "Account Executive"],
-  ["rep_jordan", "Jordan Blake", "Enterprise Account Executive"],
-  ["rep_elena", "Elena Rossi", "Solutions Engineer"],
+  ["rep_priya", "Priya Nair", "Senior Account Executive", "priya.nair@revenueos.app"],
+  ["rep_marcus", "Marcus Chen", "Account Executive", "marcus.chen@revenueos.app"],
+  ["rep_jordan", "Jordan Blake", "Enterprise Account Executive", "jordan.blake@revenueos.app"],
+  ["rep_elena", "Elena Rossi", "Solutions Engineer", "elena.rossi@revenueos.app"],
 ];
 
 const CUSTOMERS = [
@@ -102,12 +102,16 @@ const LESSONS = [
 export async function seedDatabase({ force = false } = {}) {
   const db = await getDb();
   const [{ n }] = await db.query(`SELECT count(*)::int AS n FROM customers`);
-  if (n > 0 && !force) return { seeded: false };
+  if (n > 0 && !force) {
+    // Databases seeded before sign-in existed: give the seeded teammates their emails.
+    for (const [rid, , , email] of REPS) await db.query(`UPDATE reps SET email=$2 WHERE id=$1 AND email IS NULL`, [rid, email]);
+    return { seeded: false };
+  }
   if (force) {
     await db.exec(`TRUNCATE commitments, objections, offers, interactions, stakeholders, deals, customers, reps CASCADE;`);
   }
 
-  for (const [rid, name, title] of REPS) await db.query(`INSERT INTO reps VALUES ($1,$2,$3)`, [rid, name, title]);
+  for (const [rid, name, title, email] of REPS) await db.query(`INSERT INTO reps (id, name, title, email) VALUES ($1,$2,$3,$4)`, [rid, name, title, email]);
   for (const [cid, name, industry, emp, hq, web, summary] of CUSTOMERS) {
     await db.query(`INSERT INTO customers (id, name, industry, employees, hq, website, summary) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [cid, name, industry, emp, hq, web, summary]);
   }

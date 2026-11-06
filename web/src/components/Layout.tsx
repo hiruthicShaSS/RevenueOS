@@ -1,16 +1,16 @@
 import clsx from "clsx";
-import { BookOpenCheck, Brain, Building2, Handshake, LayoutDashboard, ListChecks, MessageSquareText, Sparkles } from "lucide-react";
+import { BookOpenCheck, Brain, Building2, Handshake, Home, ListChecks, LogOut, Sparkles } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import ErrorBoundary from "./ErrorBoundary";
 import { useApi } from "../hooks";
 import type { Health } from "../api";
+import { useAuth } from "../auth";
 
 const NAV = [
-  { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
+  { to: "/", label: "Home", icon: Home, end: true },
   { to: "/customers", label: "Customers", icon: Building2 },
   { to: "/negotiate", label: "Deal Negotiator", icon: Handshake },
   { to: "/commitments", label: "Commitments", icon: ListChecks },
-  { to: "/ask", label: "Ask RevenueOS", icon: MessageSquareText },
   { to: "/memory", label: "Memory Explorer", icon: Brain },
   { to: "/playbook", label: "Playbook", icon: BookOpenCheck },
 ];
@@ -49,6 +49,7 @@ export default function Layout() {
           ))}
         </nav>
         <MemoryStatus health={health} />
+        <UserCard />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -59,6 +60,7 @@ export default function Layout() {
               {label}
             </NavLink>
           ))}
+          <MobileSignOut />
         </div>
         {health && health.memory.mode === "mock" && (
           <div className="border-b border-warn/20 bg-warn/10 px-6 py-2 text-xs text-warn">
@@ -94,5 +96,41 @@ function MemoryStatus({ health }: { health: Health | null }) {
       <div className="mt-1 line-clamp-2 text-[10.5px] leading-snug text-mute">{health ? health.memory.detail : "Checking…"}</div>
       {health && <div className="mt-1.5 text-[10.5px] text-mute">LLM · {health.llm.model}</div>}
     </div>
+  );
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join("");
+}
+
+function UserCard() {
+  const { user, logout } = useAuth();
+  if (!user) return null;
+  return (
+    <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-line bg-white/[0.02] p-2.5">
+      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-accent-2/70 to-mem/70 text-[11px] font-semibold text-white">{initials(user.name)}</div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[12.5px] font-medium text-white">{user.name}</div>
+        <div className="truncate text-[10.5px] text-mute" title={user.email}>
+          {user.title}
+        </div>
+      </div>
+      <button onClick={logout} title="Sign out" className="rounded-md p-1.5 text-mute transition hover:bg-white/5 hover:text-white">
+        <LogOut className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function MobileSignOut() {
+  const { logout } = useAuth();
+  return (
+    <button onClick={logout} className="ml-auto whitespace-nowrap rounded-md px-2.5 py-1 text-xs text-mute">
+      Sign out
+    </button>
   );
 }

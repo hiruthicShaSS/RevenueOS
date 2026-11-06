@@ -41,7 +41,7 @@ export default function Negotiator() {
   const b = result?.brief;
   return (
     <div className="space-y-6">
-      <PageHeader title="Deal Negotiator" subtitle="Advice grounded in everything this account has told us, plus what has won and lost on other deals." />
+      <PageHeader title="Deal Negotiator" subtitle="Advice grounded in everything your whole team has heard from this account, plus what has won and lost on other deals." />
       <Card>
         <div className="grid gap-3 md:grid-cols-[240px_1fr_auto]">
           <Select value={customerId} onChange={(v) => setParams({ customer: v })}>
@@ -93,6 +93,17 @@ export default function Negotiator() {
                 )}
               </div>
               <h2 className="mt-3 text-lg font-semibold leading-snug text-white">{b.headline}</h2>
+              {result.contributors && result.contributors.length > 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-mute">
+                  <Users className="h-3.5 w-3.5" />
+                  From notes logged by
+                  {result.contributors.map((c) => (
+                    <span key={c.name} className="rounded-full border border-line bg-white/[0.03] px-2 py-0.5 text-soft" title={`${c.interactions} interaction(s), last ${fmtDate(c.last)}`}>
+                      {c.name} <span className="text-mute">· {c.title}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {b.stated_blocker && (
                   <div className="rounded-xl border border-line bg-black/30 p-3">

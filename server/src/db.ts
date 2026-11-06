@@ -100,6 +100,15 @@ async function migrate(d: Db) {
       name TEXT NOT NULL,
       title TEXT NOT NULL
     );
+    ALTER TABLE reps ADD COLUMN IF NOT EXISTS email TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS reps_email_key ON reps (lower(email));
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      rep_id TEXT NOT NULL REFERENCES reps(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_seen TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
 
     CREATE TABLE IF NOT EXISTS customers (
       id TEXT PRIMARY KEY,

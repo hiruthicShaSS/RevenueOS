@@ -27,7 +27,8 @@ async function detectCustomer(question: string): Promise<any | null> {
  *  - Portfolio questions -> structured CRM data across accounts + playbook memory.
  *  - compare=true also returns what a stateless LLM would say, for before/after.
  */
-export async function ask(question: string, customerId?: string | null, compare = false) {
+export async function ask(question: string, customerId?: string | null, compare = false, asker?: { name: string; title: string }) {
+  const who = asker ? `${asker.name} (${asker.title})` : "an account executive";
   const q = question.trim();
   if (q.length < 3) throw new HttpError(400, "Ask a question.");
   const customer = customerId ? { id: customerId } : await detectCustomer(q);
@@ -42,7 +43,7 @@ export async function ask(question: string, customerId?: string | null, compare 
       const r = await memory.reflect(memory.customerBank(snapshot.customer.id), q, {
         budget: "mid",
         context:
-          `The question is from an account executive at our company about the ${snapshot.customer.name} account. ` +
+          `The question is from ${who} at our company ("I", "me" and "my" refer to them) about the ${snapshot.customer.name} account. ` +
           `Today is ${isoDate(new Date())}. Live CRM state (authoritative for commitment status):\n${snapshotToText(snapshot)}\n` +
           `Answer concisely in markdown: a direct answer first that names the single primary blocker (the one the evidence shows, which may differ from the stated objection), then the supporting history with dates and who said it, then recommended next steps. ` +
           `If our team promised something that is still open, call it out.`,
@@ -117,7 +118,7 @@ export async function ask(question: string, customerId?: string | null, compare 
     system:
       "You are RevenueOS, a sales intelligence assistant. Answer portfolio questions from the data provided only. " +
       "Be concrete: name accounts, amounts, dates and owners. Answer in markdown with a direct answer first.",
-    user: `${data}\n\nQUESTION: ${q}\n\nReturn JSON {answer: markdown string, accounts: [account names you relied on]}.`,
+    user: `${data}\n\nASKED BY: ${who} ("I"/"my" refer to them).\nQUESTION: ${q}\n\nReturn JSON {answer: markdown string, accounts: [account names you relied on]}.`,
   });
   return {
     scope: "portfolio" as const,

@@ -1,3 +1,4 @@
+import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import { z } from "zod";
@@ -12,6 +13,7 @@ import { ingestInteraction, retryRetain, INTERACTION_KINDS } from "./services/in
 import { negotiationBrief } from "./services/negotiator.js";
 import { ask } from "./services/ask.js";
 import { overview } from "./services/dashboard.js";
+import { LoginBody, login, logout, userFromToken, type User } from "./services/auth.js";
 import { getPlaybook, recordOutcome, refreshPlaybookModel } from "./services/playbook.js";
 import { demoScript, resetDemoAccount, seedDatabase, seedMemory, DEMO_CUSTOMER_ID } from "./seed.js";
 
@@ -37,7 +39,34 @@ app.get(
   })
 );
 
-app.get("/api/reps", h(async () => (await getDb()).query(`SELECT * FROM reps ORDER BY name`)));
+// ---------- sign-in ----------
+const bearer = (req: Request) => req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+const userOf = (res: Response) => res.locals.user as User;
+
+app.post("/api/auth/login", h(async (req) => login(LoginBody.parse(req.body))));
+
+// Everything below requires a signed-in teammate.
+app.use("/api", (req, res, next) => {
+  userFromToken(bearer(req))
+    .then((u) => {
+      res.locals.user = u;
+      next();
+    })
+    .catch(next);
+});
+
+app.get("/api/auth/me", h(async (_req, res) => userOf(res)));
+app.post("/api/auth/logout", h(async (req) => (await logout(bearer(req)), { ok: true })));
+
+app.get(
+  "/api/reps",
+  h(async () =>
+    (await getDb()).query(
+      `SELECT r.id, r.name, r.title, r.email, (SELECT count(*)::int FROM interactions i WHERE i.rep_id=r.id) AS interactions
+       FROM reps r ORDER BY r.name`
+    )
+  )
+);
 
 // ---------- overview ----------
 app.get("/api/overview", h(overview));
@@ -59,21 +88,22 @@ app.get(
 app.get("/api/customers/:id", h(async (req) => getAccountSnapshot(String(req.params.id))));
 
 const IngestBody = z.object({
-  repId: z.string(),
   kind: z.enum(INTERACTION_KINDS),
   text: z.string().min(1),
   occurredAt: z.string().optional(),
 });
 app.post(
   "/api/customers/:id/interactions",
-  h(async (req) => ingestInteraction({ customerId: String(req.params.id), ...IngestBody.parse(req.body) }))
+  h(async (req, res) => ingestInteraction({ customerId: String(req.params.id), repId: userOf(res).id, ...IngestBody.parse(req.body) }))
 );
 app.post("/api/interactions/:id/retry-memory", h(async (req) => retryRetain(String(req.params.id))));
 
 // ---------- negotiation ----------
 app.post(
   "/api/customers/:id/negotiate",
-  h(async (req) => negotiationBrief(String(req.params.id), z.object({ proposal: z.string().optional() }).parse(req.body ?? {}).proposal))
+  h(async (req, res) =>
+    negotiationBrief(String(req.params.id), z.object({ proposal: z.string().optional() }).parse(req.body ?? {}).proposal, userOf(res))
+  )
 );
 
 // ---------- memory explorer ----------
@@ -125,8 +155,9 @@ app.get(
 );
 app.post(
   "/api/commitments/:id/complete",
-  h(async (req) => {
+  h(async (req, res) => {
     const db = await getDb();
+    const me = userOf(res);
     const { note } = z.object({ note: z.string().optional() }).parse(req.body ?? {});
     const [c] = await db.query(
       `UPDATE commitments SET status='done', completed_at=now() WHERE id=$1 RETURNING *, (SELECT name FROM customers WHERE id=customer_id) AS customer`,
@@ -139,7 +170,7 @@ app.post(
       await memory.ensureCustomerBank(c.customer_id, c.customer);
       await memory.retain(
         memory.customerBank(c.customer_id),
-        `${c.owner} fulfilled the commitment to ${c.promised_to ?? c.customer}: "${c.description}" on ${isoDate(new Date())}.${note ? ` Note: ${note}` : ""}`,
+        `${c.owner} fulfilled the commitment to ${c.promised_to ?? c.customer}: "${c.description}" on ${isoDate(new Date())} (marked done by ${me.name}, ${me.title}).${note ? ` Note: ${note}` : ""}`,
         { context: `commitment fulfilled — ${c.customer}`, timestamp: new Date().toISOString(), documentId: `commitment-${c.id}`, tags: ["kind:commitment"] }
       );
     } catch (e) {
@@ -152,9 +183,9 @@ app.post(
 // ---------- ask ----------
 app.post(
   "/api/ask",
-  h(async (req) => {
+  h(async (req, res) => {
     const b = z.object({ question: z.string(), customerId: z.string().nullable().optional(), compare: z.boolean().optional() }).parse(req.body);
-    return ask(b.question, b.customerId, b.compare ?? false);
+    return ask(b.question, b.customerId, b.compare ?? false, userOf(res));
   })
 );
 
@@ -174,6 +205,18 @@ app.post(
 // ---------- demo ----------
 app.get("/api/demo/script", h(async () => demoScript()));
 app.post("/api/demo/reset", h(async () => (await resetDemoAccount(), { ok: true, customerId: DEMO_CUSTOMER_ID })));
+
+// ---------- web app (production: one server for UI + API) ----------
+if (config.webDist) {
+  app.use(express.static(config.webDist, { index: false, maxAge: "1h" }));
+  // Client-side routes (/customers/..., /negotiate) all load the SPA shell.
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api")) return next();
+    res.setHeader("Cache-Control", "no-cache");
+    res.sendFile(path.join(config.webDist, "index.html"));
+  });
+}
+app.use("/api", (_req, _res, next) => next(new HttpError(404, "Not found")));
 
 // ---------- errors ----------
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

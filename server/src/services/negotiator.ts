@@ -1,3 +1,4 @@
+import { getDb } from "../db.js";
 import { z } from "zod";
 import { llmJson } from "../llm.js";
 import { memory, type MemoryHit } from "../memory/index.js";
@@ -36,8 +37,15 @@ const RECALL_ANGLES = [
  * bank + cross-deal recall on the playbook bank + CRM commitments, then an LLM
  * that must cite memory refs for every recommendation.
  */
-export async function negotiationBrief(customerId: string, proposal?: string) {
+export async function negotiationBrief(customerId: string, proposal?: string, asker?: { name: string; title: string }) {
   const snapshot = await getAccountSnapshot(customerId);
+  // Everyone on the team writes into the same account memory; show whose notes this brief draws on.
+  const contributors = await (await getDb()).query<{ name: string; title: string; interactions: number; last: string }>(
+    `SELECT r.name, r.title, count(*)::int AS interactions, max(i.occurred_at) AS last
+     FROM interactions i JOIN reps r ON r.id=i.rep_id WHERE i.customer_id=$1
+     GROUP BY r.name, r.title ORDER BY last DESC`,
+    [customerId]
+  );
   const bank = memory.customerBank(customerId);
   await memory.ensureCustomerBank(customerId, snapshot.customer.name);
 
@@ -91,6 +99,7 @@ export async function negotiationBrief(customerId: string, proposal?: string) {
       empty: true,
       message: `No interactions remembered for ${snapshot.customer.name} yet. Log a meeting or call first.`,
       evidence: {},
+      contributors,
       errors,
     };
   }
@@ -104,7 +113,8 @@ export async function negotiationBrief(customerId: string, proposal?: string) {
       "Separate the blocker the customer states from the one the evidence shows. If a discount was already rejected, say whether pricing is really the issue. " +
       "Flag unfulfilled promises our team made. Be direct and specific; name stakeholders.",
     user: [
-      `Today is ${new Date().toISOString().slice(0, 10)}.`,
+      `Today is ${new Date().toISOString().slice(0, 10)}.${asker ? ` You are coaching ${asker.name} (${asker.title}).` : ""}`,
+      `Account memory combines notes logged by these teammates: ${contributors.map((c) => `${c.name} (${c.title}, ${c.interactions} notes)`).join("; ") || "none yet"}. Connect what different people heard; do not assume the person you coach was in every conversation.`,
       proposal?.trim() ? `The rep is considering this next move: "${proposal.trim()}". Assess it explicitly in proposal_assessment.` : `The rep wants to know how to move this deal forward.`,
       ``,
       `CRM STATE:`,
@@ -130,5 +140,5 @@ export async function negotiationBrief(customerId: string, proposal?: string) {
   pRefs.forEach(({ ref, m }) => (evidence[ref] = { kind: "playbook_memory", ...m }));
   cRefs.forEach(({ ref, c }) => (evidence[ref] = { kind: "commitment", ...c }));
 
-  return { empty: false, customer: snapshot.customer, brief, evidence, recalled: { account: accountMem.length, playbook: playbookMem.length }, errors };
+  return { empty: false, customer: snapshot.customer, brief, evidence, recalled: { account: accountMem.length, playbook: playbookMem.length }, contributors, errors };
 }

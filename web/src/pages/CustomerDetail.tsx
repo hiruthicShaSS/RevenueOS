@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Brain, ChevronDown, Handshake, RefreshCw } from "lucide-react";
 import clsx from "clsx";
-import { api, fmtDate, fmtMoney, type AccountSnapshot, type IngestResult, type Rep } from "../api";
+import { api, fmtDate, fmtMoney, type AccountSnapshot, type IngestResult } from "../api";
+import { useUser } from "../auth";
 import { useApi } from "../hooks";
 import AnalysisView from "../components/AnalysisView";
 import { Badge, Button, Card, Empty, ErrorBox, PageHeader, Select, Skeleton, inputCls } from "../components/ui";
@@ -48,7 +49,7 @@ export default function CustomerDetail() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <LogInteraction customerId={c.id} defaultRepId={deal?.owner_id ?? "rep_priya"} onDone={reload} />
+          <LogInteraction customerId={c.id} onDone={reload} />
           <Card title="Interaction history" subtitle="Each one is retained in this account's Hindsight bank">
             {data.interactions.length === 0 ? (
               <Empty title="No interactions yet">Log a meeting, call or email above. RevenueOS will extract facts and start remembering.</Empty>
@@ -142,9 +143,8 @@ export default function CustomerDetail() {
   );
 }
 
-function LogInteraction({ customerId, defaultRepId, onDone }: { customerId: string; defaultRepId: string; onDone: () => void }) {
-  const { data: reps } = useApi<Rep[]>("/reps");
-  const [repId, setRepId] = useState(defaultRepId);
+function LogInteraction({ customerId, onDone }: { customerId: string; onDone: () => void }) {
+  const me = useUser();
   const [kind, setKind] = useState("meeting");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [text, setText] = useState("");
@@ -158,7 +158,6 @@ function LogInteraction({ customerId, defaultRepId, onDone }: { customerId: stri
     setResult(null);
     try {
       const r = await api.post<IngestResult>(`/customers/${customerId}/interactions`, {
-        repId,
         kind,
         text,
         occurredAt: new Date(`${date}T12:00:00Z`).toISOString(),
@@ -175,14 +174,10 @@ function LogInteraction({ customerId, defaultRepId, onDone }: { customerId: stri
 
   return (
     <Card title="Log an interaction" subtitle="Meeting notes, a call transcript, an email or a quick note. RevenueOS extracts what matters and remembers it.">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Select value={repId} onChange={setRepId}>
-          {reps?.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </Select>
+      <div className="mb-3 text-xs text-mute" title={me.email}>
+        Logging as <span className="text-soft">{me.name}</span> · {me.title}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
         <Select value={kind} onChange={setKind}>
           {KINDS.map(([k, l]) => (
             <option key={k} value={k}>
@@ -231,7 +226,7 @@ function InteractionItem({ i, onRetried }: { i: AccountSnapshot["interactions"][
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs text-mute">
           <Badge tone="accent">{i.kind.replace("_", " ")}</Badge>
-          <span className="text-soft">{i.rep_name}</span>
+          <span className="text-soft">{i.rep_name}</span>{i.rep_title && <span className="text-mute">({i.rep_title})</span>}
           <span>{fmtDate(i.occurred_at)}</span>
         </div>
         <div className="flex items-center gap-2">

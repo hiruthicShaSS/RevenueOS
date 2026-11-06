@@ -64,16 +64,26 @@ async function stopServer() {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function call<T = any>(method: string, p: string, body?: unknown): Promise<{ status: number; data: T }> {
-  const r = await fetch(`${BASE}${p}`, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+let token: string | null = null;
+
+async function call<T = any>(method: string, p: string, body?: unknown, auth: string | null = token): Promise<{ status: number; data: T }> {
+  const headers: Record<string, string> = {};
+  if (body) headers["Content-Type"] = "application/json";
+  if (auth) headers.Authorization = `Bearer ${auth}`;
+  const r = await fetch(`${BASE}${p}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
   return { status: r.status, data: (await r.json().catch(() => null)) as T };
 }
 const get = <T = any>(p: string) => call<T>("GET", p);
 const post = <T = any>(p: string, b: unknown = {}) => call<T>("POST", p, b);
+
+/** Sign in as a teammate; later calls run as them. */
+async function signIn(email: string, designation: string) {
+  const r = ok(await post("/auth/login", { email, designation }), `login ${email}`);
+  token = r.token;
+  return r.user;
+}
+const PRIYA = "priya.nair@revenueos.app";
+const MARCUS = "marcus.chen@revenueos.app";
 
 function ok<T>(res: { status: number; data: T }, label: string): T {
   assert.equal(res.status, 200, `${label} -> HTTP ${res.status}: ${JSON.stringify(res.data)}`);
@@ -82,6 +92,7 @@ function ok<T>(res: { status: number; data: T }, label: string): T {
 
 before(async () => {
   await startServer();
+  await signIn(PRIYA, "Senior Account Executive");
 });
 
 after(async () => {
@@ -116,11 +127,40 @@ describe("system", () => {
   });
 });
 
+describe("sign-in", () => {
+  test("every API except health and login requires a session", async () => {
+    assert.equal((await call("GET", "/customers", undefined, null)).status, 401);
+    assert.equal((await call("GET", "/customers", undefined, "not-a-real-token")).status, 401);
+    assert.equal((await call("GET", "/health", undefined, null)).status, 200);
+  });
+
+  test("login validates email and designation", async () => {
+    assert.equal((await call("POST", "/auth/login", { email: "nope", designation: "AE" }, null)).status, 400);
+    assert.equal((await call("POST", "/auth/login", { email: "a@b.co", designation: "" }, null)).status, 400);
+  });
+
+  test("a new teammate is created from email, a known email reuses its profile, logout ends the session", async () => {
+    const email = `sam.okoro.${Date.now()}@revenueos.app`;
+    const first = ok(await call<any>("POST", "/auth/login", { email: email.toUpperCase(), designation: "Sales Manager" }, null), "new login");
+    assert.equal(first.user.name, "Sam Okoro");
+    assert.equal(first.user.title, "Sales Manager");
+    const again = ok(await call<any>("POST", "/auth/login", { email, designation: "VP of Sales" }, null), "second login");
+    assert.equal(again.user.id, first.user.id, "same email, same teammate");
+    assert.equal(again.user.title, "VP of Sales", "designation updated");
+    assert.equal(ok(await call<any>("GET", "/auth/me", undefined, again.token), "me").email, email);
+    ok(await call("POST", "/auth/logout", {}, again.token), "logout");
+    assert.equal((await call("GET", "/auth/me", undefined, again.token)).status, 401);
+    assert.equal((await call("GET", "/auth/me", undefined, first.token)).status, 200, "other sessions stay valid");
+
+    const seeded = ok(await call<any>("POST", "/auth/login", { email: PRIYA, designation: "Senior Account Executive" }, null), "seeded login");
+    assert.equal(seeded.user.id, "rep_priya");
+  });
+});
+
 describe("input validation and error handling", () => {
   test("rejects bad interaction input", async () => {
-    const good = { repId: "rep_priya", kind: "meeting", text: "A sufficiently long note about the account." };
+    const good = { kind: "meeting", text: "A sufficiently long note about the account." };
     assert.equal((await post("/customers/cus_halcyon/interactions", { ...good, text: "too short" })).status, 400);
-    assert.equal((await post("/customers/cus_halcyon/interactions", { ...good, repId: "rep_nobody" })).status, 400);
     assert.equal((await post("/customers/cus_halcyon/interactions", { ...good, kind: "fax" })).status, 400);
     assert.equal((await post("/customers/cus_halcyon/interactions", { ...good, occurredAt: "not-a-date" })).status, 400);
     assert.equal((await post("/customers/cus_nope/interactions", good)).status, 404);
@@ -149,7 +189,8 @@ describe("the persistent memory scenario", () => {
   test("conversation 1 is analysed and retained in Hindsight", LONG, async () => {
     script = ok(await get("/demo/script"), "script");
     const s = script.steps[0];
-    conv1 = ok(await post(`/customers/${script.customerId}/interactions`, { repId: s.repId, kind: s.kind, text: s.text, occurredAt: s.occurredAt }), "conv1");
+    await signIn(PRIYA, "Senior Account Executive");
+    conv1 = ok(await post(`/customers/${script.customerId}/interactions`, { kind: s.kind, text: s.text, occurredAt: s.occurredAt }), "conv1");
     assert.equal(conv1.memoryStatus, "stored", conv1.memoryError);
     assert.equal(conv1.recalledCount, 0, "fresh bank has nothing to recall");
 
@@ -182,7 +223,10 @@ describe("the persistent memory scenario", () => {
 
   test("conversation 2 by a different rep recalls and connects conversation 1", LONG, async () => {
     const s = script.steps[1];
-    const r = ok(await post(`/customers/${script.customerId}/interactions`, { repId: s.repId, kind: s.kind, text: s.text, occurredAt: s.occurredAt }), "conv2");
+    await signIn(MARCUS, "Account Executive");
+    const r = ok(await post(`/customers/${script.customerId}/interactions`, { kind: s.kind, text: s.text, occurredAt: s.occurredAt }), "conv2");
+    const snap = ok(await get(`/customers/${script.customerId}`), "snapshot");
+    assert.deepEqual(new Set(snap.interactions.map((i: any) => i.rep_name)), new Set(["Priya Nair", "Marcus Chen"]), "each note is attributed to who logged it");
     assert.equal(r.memoryStatus, "stored", r.memoryError);
     assert.ok(r.recalledCount > 0, "should recall conversation 1");
     assert.ok(r.analysis.connections.length > 0, "should link to earlier memories");
@@ -218,7 +262,6 @@ describe("isolation between customer memories", () => {
   test("another account's bank never returns Halcyon facts", LONG, async () => {
     const r = ok(
       await post("/customers/cus_meridian/interactions", {
-        repId: "rep_marcus",
         kind: "note",
         text: "Angela Ruiz confirmed the security review meeting with Tom Becker is booked for next Tuesday.",
       }),
@@ -262,6 +305,8 @@ describe("negotiator", () => {
     assert.ok(refs.length > 0, "recommendations cite evidence");
     const unresolved = refs.filter((ref: string) => !(ref in r.evidence));
     assert.deepEqual(unresolved, [], "every cited ref exists in the evidence map");
+    const names = r.contributors.map((c: any) => c.name);
+    assert.ok(names.includes("Priya Nair") && names.includes("Marcus Chen"), `brief draws on both teammates' notes: ${names}`);
   });
 });
 
