@@ -48,7 +48,7 @@ export default function Commitments() {
   }
 
   return (
-    <div>
+    <div className="stagger">
       <PageHeader
         title="Commitments"
         subtitle="Every promise made in a meeting is detected, tracked and remembered, including when it's kept. Unkept promises are the fastest way to lose a negotiation."
@@ -68,7 +68,7 @@ export default function Commitments() {
         />
       </div>
 
-      {msg && <div className={clsx("mb-5 rounded-xl px-4 py-3 text-[13.5px]", msg.ok ? "bg-good/10 text-good" : "bg-bad/10 text-bad")}>{msg.text}</div>}
+      {msg && <div className={clsx("pop-in mb-5 rounded-xl px-4 py-3 text-[13.5px]", msg.ok ? "bg-good/10 text-good" : "bg-bad/10 text-bad")}>{msg.text}</div>}
       {error && <ErrorBox error={error} onRetry={reload} />}
 
       <Card bodyClassName="!p-0">
@@ -105,7 +105,7 @@ export default function Commitments() {
                 {rows.map((c) => {
                   const s = statusOf(c);
                   return (
-                    <tr key={c.id} className={clsx("border-b border-line align-top last:border-0", s === "overdue" && "bg-bad/[0.035]")}>
+                    <tr key={c.id} className={clsx("border-b border-line align-top transition-colors duration-[var(--t-med)] last:border-0 hover:bg-fg/[0.02]", s === "overdue" && "bg-bad/[0.035]")}>
                       <td className={clsx("px-6 py-4 leading-relaxed", s === "done" ? "text-mute line-through decoration-mute/40" : "text-fg")}>{c.description}</td>
                       <td className="py-4 pr-4 leading-relaxed text-soft">
                         {c.owner} <span className="text-mute">→</span> {c.promised_to ?? "customer"}

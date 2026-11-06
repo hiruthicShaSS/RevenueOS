@@ -64,7 +64,7 @@ export default function Playbook() {
   const lessons = (data?.lessons ?? []).filter((l) => theme === "all" || l.theme.id === theme);
 
   return (
-    <div>
+    <div className="stagger">
       <PageHeader
         title="Negotiation playbook"
         subtitle="Every closed deal contributes to RevenueOS's collective intelligence. We extract negotiation patterns, anonymise customer-specific information and use these lessons to improve future recommendations across accounts."
@@ -91,7 +91,7 @@ export default function Playbook() {
             ) : !data?.patterns.length ? (
               <Empty title="No outcomes yet">Close a deal on the right to record the first lesson.</Empty>
             ) : (
-              <div className="grid gap-5 md:grid-cols-2">
+              <div className="stagger grid gap-5 md:grid-cols-2">
                 {data.patterns.map((p) => (
                   <PatternCard key={p.id} p={p} />
                 ))}
@@ -116,7 +116,7 @@ export default function Playbook() {
                 ) : undefined
               }
             />
-            <div className="space-y-4">
+            <div key={theme} className="stagger space-y-4">
               {lessons.map((l) => {
                 const p = patternOf(l);
                 return (
@@ -211,7 +211,7 @@ function Field({ label, children, wide }: { label: string; children: React.React
 function PatternCard({ p }: { p: Pattern }) {
   const c = CONF[p.confidence];
   return (
-    <div className="min-w-0 rounded-2xl border border-line bg-panel p-6 shadow-card">
+    <div className="lift min-w-0 rounded-2xl border border-line bg-panel p-6 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[16px] font-semibold text-fg">{p.label}</div>
@@ -222,8 +222,8 @@ function PatternCard({ p }: { p: Pattern }) {
         <Badge tone={c.tone}>{c.label}</Badge>
       </div>
       <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-fg/[0.06]">
-        <div className="bg-good" style={{ width: `${(p.won / p.outcomes) * 100}%` }} />
-        <div className="bg-bad/70" style={{ width: `${(p.lost / p.outcomes) * 100}%` }} />
+        <div className="bar-grow bg-good" style={{ width: `${(p.won / p.outcomes) * 100}%` }} />
+        <div className="bar-grow bg-bad/70" style={{ width: `${(p.lost / p.outcomes) * 100}%` }} />
       </div>
       {p.winning.length > 0 && (
         <div className="mt-5">
@@ -381,7 +381,7 @@ function RecordOutcome({ onDone }: { onDone: () => void }) {
           {deal && <p className="text-[12.5px] leading-relaxed text-mute">Names, amounts and dates are removed before anything reaches the shared playbook.</p>}
           {err && <ErrorBox error={err} />}
           {saved && (
-            <div className="fade-in rounded-xl border border-good/30 bg-good/[0.07] p-4">
+            <div className="pop-in rounded-xl border border-good/30 bg-good/[0.07] p-4">
               <div className="text-[13px] font-medium text-good">Saved. This anonymised lesson is now in the playbook:</div>
               {saved.lesson && <p className="mt-2 text-[13.5px] font-medium leading-relaxed text-fg">{saved.lesson}</p>}
               <dl className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-soft">

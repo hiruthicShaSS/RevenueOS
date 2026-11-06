@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { AlertTriangle, Brain, ChevronDown, Loader2 } from "lucide-react";
 import Markdown from "react-markdown";
-import { useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { fmtDate, type MemoryHit } from "../api";
 
 /* ------------------------------------------------------------------ surfaces */
@@ -122,7 +122,7 @@ export function Button({
       title={title}
       disabled={disabled || loading}
       className={clsx(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+        "press inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-[13.5px] font-medium disabled:cursor-not-allowed disabled:opacity-50",
         variant === "primary" && "bg-accent text-on-accent hover:bg-accent-strong dark:hover:bg-accent-strong",
         variant === "mem" && "bg-mem text-white hover:opacity-90",
         variant === "outline" && "border border-line-2 bg-raised text-soft hover:border-accent/40 hover:text-fg",
@@ -148,8 +148,42 @@ export function Segmented<T extends string>({
   options: { value: T; label: ReactNode; title?: string }[];
   size?: "sm" | "md";
 }) {
+  // A single thumb slides under the active option instead of each option toggling its own background.
+  const wrap = useRef<HTMLDivElement>(null);
+  const [thumb, setThumb] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [animate, setAnimate] = useState(false);
+  useLayoutEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const measure = () => {
+      const btn = el.querySelector<HTMLElement>('[aria-pressed="true"]');
+      if (btn) setThumb({ x: btn.offsetLeft, y: btn.offsetTop, w: btn.offsetWidth, h: btn.offsetHeight });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [value, options.length]);
+  useEffect(() => {
+    const t = window.setTimeout(() => setAnimate(true), 50); // no slide on first paint
+    return () => window.clearTimeout(t);
+  }, []);
   return (
-    <div className="inline-flex max-w-full flex-wrap rounded-lg border border-line bg-fg/[0.03] p-0.5">
+    <div ref={wrap} className="relative inline-flex max-w-full flex-wrap rounded-lg border border-line bg-fg/[0.03] p-0.5">
+      {thumb && (
+        <span
+          aria-hidden
+          className="absolute rounded-md bg-raised shadow-card"
+          style={{
+            transform: `translate(${thumb.x}px, ${thumb.y}px)`,
+            width: thumb.w,
+            height: thumb.h,
+            left: 0,
+            top: 0,
+            transition: animate ? "transform var(--t-med) var(--ease), width var(--t-med) var(--ease)" : "none",
+          }}
+        />
+      )}
       {options.map((o) => (
         <button
           key={o.value}
@@ -157,9 +191,9 @@ export function Segmented<T extends string>({
           aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={clsx(
-            "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md font-medium transition",
+            "press relative z-10 inline-flex items-center gap-1.5 whitespace-nowrap rounded-md font-medium",
             size === "sm" ? "px-2 py-1 text-[12px]" : "px-3 py-1.5 text-[13px]",
-            value === o.value ? "bg-raised text-fg shadow-card" : "text-mute hover:text-fg"
+            value === o.value ? "text-fg" : "text-mute hover:text-fg"
           )}
         >
           {o.label}
@@ -190,12 +224,58 @@ export function Disclosure({ summary, children, defaultOpen = false }: { summary
   return (
     <div>
       <button onClick={() => setOpen((o) => !o)} className="group flex w-full items-start gap-2 text-left" aria-expanded={open}>
-        <ChevronDown className={clsx("mt-[3px] h-4 w-4 shrink-0 text-mute transition", open ? "rotate-0" : "-rotate-90")} />
+        <ChevronDown className={clsx("mt-[3px] h-4 w-4 shrink-0 text-mute transition-transform duration-[var(--t-med)] ease-[var(--ease)]", open ? "rotate-0" : "-rotate-90")} />
         <div className="min-w-0 flex-1">{summary}</div>
       </button>
-      {open && <div className="fade-in mt-2 pl-6">{children}</div>}
+      <Collapse open={open}>
+        <div className="pl-6 pt-2">{children}</div>
+      </Collapse>
     </div>
   );
+}
+
+/** Animated expand/collapse. Children stay mounted, so state inside survives toggling. */
+export function Collapse({ open, children, className }: { open: boolean; children: ReactNode; className?: string }) {
+  return (
+    <div className={clsx("collapse", className)} data-open={open} aria-hidden={!open} inert={!open || undefined}>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+/** Counts up to a number on first show and eases between later values. */
+export function AnimatedNumber({ value, format = (n) => Math.round(n).toLocaleString("en-US"), duration = 900 }: { value: number; format?: (n: number) => string; duration?: number }) {
+  const [shown, setShown] = useState(0);
+  const from = useRef(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setShown(value);
+      from.current = value;
+      return;
+    }
+    const start = performance.now();
+    const a = from.current;
+    let raf = 0;
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setShown(a + (value - a) * eased);
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else from.current = value;
+    };
+    raf = requestAnimationFrame(tick);
+    // Frames can be throttled (background tab, hidden window): always land on the real value.
+    const done = window.setTimeout(() => {
+      cancelAnimationFrame(raf);
+      setShown(value);
+      from.current = value;
+    }, duration + 150);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(done);
+    };
+  }, [value, duration]);
+  return <span className="tabular-nums">{format(shown)}</span>;
 }
 
 /* ------------------------------------------------------------------ data display */

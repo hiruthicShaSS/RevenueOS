@@ -40,7 +40,7 @@ export default function Login() {
         <ThemeSwitch />
       </div>
       <div className="grid w-full max-w-5xl items-center gap-14 md:grid-cols-[1.1fr_1fr]">
-        <div className="hidden md:block">
+        <div className="stagger hidden md:block">
           <Brand size="lg" />
           <h1 className="mt-10 text-[38px] font-semibold leading-[1.1] tracking-[-0.025em] text-fg">
             One memory for
@@ -57,7 +57,7 @@ export default function Login() {
           </div>
         </div>
 
-        <form onSubmit={submit} className="rounded-2xl border border-line bg-panel p-8 shadow-card">
+        <form onSubmit={submit} className="pop-in rounded-2xl border border-line bg-panel p-8 shadow-card">
           <div className="mb-6 md:hidden"><Brand /></div>
           <div className="text-[20px] font-semibold text-fg">Sign in</div>
           <p className="mt-1.5 text-[13.5px] text-mute">Use your work email. First time here? We'll set you up.</p>

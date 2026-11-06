@@ -6,7 +6,7 @@ import { api, fmtDate, fmtMoney, type AccountSnapshot, type MemoryHit } from "..
 import { useApi } from "../hooks";
 import AnalysisView from "../components/AnalysisView";
 import LogInteraction from "../components/LogInteraction";
-import { Badge, Button, Card, Empty, ErrorBox, MemoryRow, PageHeader, Skeleton, StatusDot } from "../components/ui";
+import { Badge, Button, Card, Collapse, Empty, ErrorBox, MemoryRow, PageHeader, Skeleton, StatusDot } from "../components/ui";
 
 const SECTIONS = [
   ["overview", "Overview"],
@@ -37,7 +37,7 @@ export default function CustomerDetail() {
   const go = (sid: string) => document.getElementById(sid)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
-    <div>
+    <div className="stagger">
       <PageHeader
         title={c.name}
         subtitle={
@@ -71,7 +71,7 @@ export default function CustomerDetail() {
 
       <nav className="sticky top-0 z-20 -mx-1 mb-8 flex gap-1 overflow-x-auto bg-bg/90 px-1 py-2 backdrop-blur">
         {SECTIONS.map(([sid, label]) => (
-          <button key={sid} onClick={() => go(sid)} className="whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] text-soft transition hover:bg-fg/5 hover:text-fg">
+          <button key={sid} onClick={() => go(sid)} className="press whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] text-soft hover:bg-fg/5 hover:text-fg">
             {label}
           </button>
         ))}
@@ -80,7 +80,7 @@ export default function CustomerDetail() {
       <div className="space-y-10">
         {/* overview */}
         <section id="overview" className="scroll-mt-16">
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="stagger grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             <Fact label="Open pipeline" value={fmtMoney(openDeals.reduce((s, d) => s + Number(d.amount), 0))} hint={`${openDeals.length} open deal${openDeals.length === 1 ? "" : "s"}`} />
             <Fact label="Conversations" value={data.interactions.length} hint={data.interactions[0] ? `Last ${fmtDate(data.interactions[0].occurred_at)}` : "None yet"} />
             <Fact label="Open objections" value={openObjections.length} hint={`${data.objections.length - openObjections.length} resolved`} tone={openObjections.length ? "warn" : undefined} />
@@ -296,10 +296,10 @@ function Objections({ data }: { data: AccountSnapshot }) {
       {resolved.length > 0 && (
         <div>
           <button onClick={() => setShowResolved((s) => !s)} className="flex items-center gap-1 text-[12.5px] font-medium text-mute hover:text-fg">
-            <ChevronDown className={clsx("h-3.5 w-3.5 transition", !showResolved && "-rotate-90")} />
+            <ChevronDown className={clsx("h-3.5 w-3.5 transition-transform duration-[var(--t-med)]", !showResolved && "-rotate-90")} />
             {resolved.length} resolved objection{resolved.length === 1 ? "" : "s"}
           </button>
-          {showResolved && (
+          <Collapse open={showResolved}>
             <ul className="mt-2.5 space-y-2 border-l border-line pl-3">
               {resolved.map((o) => (
                 <li key={o.id} className="text-[13px] leading-relaxed text-mute">
@@ -308,7 +308,7 @@ function Objections({ data }: { data: AccountSnapshot }) {
                 </li>
               ))}
             </ul>
-          )}
+          </Collapse>
         </div>
       )}
     </div>
@@ -379,14 +379,14 @@ function TimelineItem({ i, onRetried }: { i: AccountSnapshot["interactions"][num
           )}
           {i.analysis && (
             <button onClick={() => setOpenAnalysis((o) => !o)} className="flex items-center gap-1 text-[12.5px] font-medium text-mem hover:underline">
-              AI analysis <ChevronDown className={clsx("h-3.5 w-3.5 transition", openAnalysis && "rotate-180")} />
+              AI analysis <ChevronDown className={clsx("h-3.5 w-3.5 transition-transform duration-[var(--t-med)]", openAnalysis && "rotate-180")} />
             </button>
           )}
         </div>
-        {openAnalysis && i.analysis && (
-          <div className="mt-4 rounded-xl border border-line bg-raised p-5">
-            <AnalysisView a={i.analysis} />
-          </div>
+        {i.analysis && (
+          <Collapse open={openAnalysis}>
+            <div className="mt-4 rounded-xl border border-line bg-raised p-5">{openAnalysis && <AnalysisView a={i.analysis} />}</div>
+          </Collapse>
         )}
       </div>
     </li>

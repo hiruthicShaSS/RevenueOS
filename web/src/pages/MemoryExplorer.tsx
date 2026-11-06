@@ -108,7 +108,7 @@ export default function MemoryExplorer() {
   const matchCount = data ? data.nodes.filter((n) => matchesFilters(n, filters)).length : 0;
 
   return (
-    <div>
+    <div className="stagger">
       <PageHeader
         title="Memory Explorer"
         subtitle="Explore what RevenueOS understands about an account, straight from its private Hindsight memory."
@@ -153,7 +153,7 @@ export default function MemoryExplorer() {
           {loading && !data ? (
             <Skeleton className="h-[620px]" />
           ) : data ? (
-            <div className="space-y-5">
+            <div className="fade-in space-y-5">
               {/* summary + category shortcuts */}
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] text-mute">
                 <span>
@@ -169,7 +169,7 @@ export default function MemoryExplorer() {
                     disabled={!c.count}
                     onClick={() => jump(c.id)}
                     className={clsx(
-                      "flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12.5px] transition disabled:opacity-40",
+                      "press flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12.5px] disabled:opacity-40",
                       expanded.has(c.id) ? "border-line-2 bg-raised text-fg shadow-card" : "border-line text-soft hover:border-line-2 hover:text-fg"
                     )}
                   >
@@ -240,7 +240,7 @@ export default function MemoryExplorer() {
                     <KnowledgeMap data={data} filters={filters} expanded={expanded} onToggle={toggle} selected={selected} onSelect={select} focusCategory={focusCategory} dark={dark} />
                   </div>
                   {selected && (
-                    <aside className="h-[calc(100vh-330px)] min-h-[560px] min-w-0 overflow-hidden rounded-2xl border border-mem/30 bg-panel shadow-card">
+                    <aside key={selected} className="slide-in-right h-[calc(100vh-330px)] min-h-[560px] min-w-0 overflow-hidden rounded-2xl border border-mem/30 bg-panel shadow-card">
                       <MemoryDetail data={data} id={selected} onSelect={select} onClose={() => setSelected(null)} dark={dark} />
                     </aside>
                   )}

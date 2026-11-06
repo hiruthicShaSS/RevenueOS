@@ -39,7 +39,7 @@ export default function Customers() {
   );
 
   return (
-    <div>
+    <div className="stagger">
       <PageHeader title="Customers" subtitle="Every account keeps its own private Hindsight memory. Open one to see what the team knows and log what happened next." />
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -80,7 +80,7 @@ export default function Customers() {
         ) : rows.length === 0 ? (
           <div className="px-6 py-10 text-center text-[14px] text-mute">No accounts match.</div>
         ) : (
-          <ul className="divide-y divide-line">
+          <ul className="stagger divide-y divide-line">
             {rows.map((c) => (
               <li key={c.id}>
                 <Link

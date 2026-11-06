@@ -34,7 +34,9 @@ export default function LogInteraction({ customerId, customerName, onDone }: { c
         />
       }
     >
-      {mode === "write" ? <WriteForm customerId={customerId} onDone={onDone} /> : <UploadFlow pageCustomerId={customerId} pageCustomerName={customerName} onDone={onDone} />}
+      <div key={mode} className="fade-in">
+        {mode === "write" ? <WriteForm customerId={customerId} onDone={onDone} /> : <UploadFlow pageCustomerId={customerId} pageCustomerName={customerName} onDone={onDone} />}
+      </div>
     </Card>
   );
 }
@@ -98,7 +100,7 @@ function WriteForm({ customerId, onDone }: { customerId: string; onDone: () => v
         </div>
       )}
       {result && (
-        <div className="mt-6 border-t border-line pt-6">
+        <div className="fade-in mt-6 border-t border-line pt-6">
           <SavedBanner result={result} />
           <AnalysisView a={result.analysis} />
         </div>
@@ -110,7 +112,7 @@ function WriteForm({ customerId, onDone }: { customerId: string; onDone: () => v
 function SavedBanner({ result }: { result: IngestResult }) {
   const ok = result.memoryStatus === "stored";
   return (
-    <div className={clsx("mb-5 flex flex-wrap items-center gap-2 rounded-xl px-4 py-3 text-[13.5px]", ok ? "bg-good/10 text-good" : "bg-bad/10 text-bad")}>
+    <div className={clsx("pop-in mb-5 flex flex-wrap items-center gap-2 rounded-xl px-4 py-3 text-[13.5px]", ok ? "bg-good/10 text-good" : "bg-bad/10 text-bad")}>
       {ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
       {ok ? "Saved and stored in Hindsight memory." : `Saved to the CRM, but the memory write failed: ${result.memoryError}`}
       <span className="text-mute">Compared against {result.recalledCount} earlier memories.</span>
@@ -224,8 +226,8 @@ function UploadFlow({ pageCustomerId, pageCustomerName, onDone }: { pageCustomer
           tabIndex={0}
           onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
           className={clsx(
-            "flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition",
-            drag ? "border-accent bg-accent/[0.06]" : "border-line-2 hover:border-accent/60 hover:bg-fg/[0.02]"
+            "flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition-[border-color,background-color,transform] duration-[var(--t-med)]",
+            drag ? "scale-[1.01] border-accent bg-accent/[0.06]" : "border-line-2 hover:border-accent/60 hover:bg-fg/[0.02]"
           )}
         >
           <input ref={input} type="file" accept={ACCEPT} className="hidden" onChange={(e) => choose(e.target.files?.[0])} />
@@ -266,7 +268,7 @@ function UploadFlow({ pageCustomerId, pageCustomerName, onDone }: { pageCustomer
   const id = preview.identification;
   const mismatch = preview.customer && preview.customer.id !== pageCustomerId;
   return (
-    <div className="space-y-6">
+    <div className="fade-in space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-line bg-raised px-5 py-4">
         <div className="flex min-w-0 items-start gap-3">
           <FileText className="mt-0.5 h-5 w-5 shrink-0 text-accent-strong dark:text-accent" />

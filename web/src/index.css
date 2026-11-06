@@ -120,18 +120,157 @@ html.theme-switching *::after {
   box-shadow: var(--shadow);
 }
 
-.fade-in {
-  animation: fade-in 0.3s ease-out both;
+/* ------------------------------------------------------------------ motion
+ * One easing and three durations everywhere, so movement feels like one system.
+ * Everything below is switched off for prefers-reduced-motion (end of file).
+ */
+:root {
+  --ease: cubic-bezier(0.22, 1, 0.36, 1); /* fast out, soft landing */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --t-fast: 140ms;
+  --t-med: 260ms;
+  --t-slow: 480ms;
 }
-@keyframes fade-in {
+
+/* Generic entrance used for new content (answers, previews, toasts). */
+.fade-in {
+  animation: rise var(--t-med) var(--ease) both;
+}
+@keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(3px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
     transform: none;
   }
+}
+
+/* Page change: the new page rises in; its sections follow in a short cascade. */
+.page-enter {
+  animation: page-in var(--t-med) ease-out both;
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.stagger > * {
+  animation: rise var(--t-slow) var(--ease) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 30ms; }
+.stagger > *:nth-child(2) { animation-delay: 70ms; }
+.stagger > *:nth-child(3) { animation-delay: 110ms; }
+.stagger > *:nth-child(4) { animation-delay: 150ms; }
+.stagger > *:nth-child(5) { animation-delay: 190ms; }
+.stagger > *:nth-child(6) { animation-delay: 230ms; }
+.stagger > *:nth-child(7) { animation-delay: 270ms; }
+.stagger > *:nth-child(n + 8) { animation-delay: 300ms; }
+
+/* Side panels slide in from the right; lists of items pop in. */
+.slide-in-right {
+  animation: slide-in-right var(--t-med) var(--ease) both;
+}
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop-in {
+  animation: pop-in var(--t-med) var(--ease) both;
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Bars grow from the left on first paint. */
+.bar-grow {
+  transform-origin: left center;
+  animation: bar-grow 700ms var(--ease) both;
+}
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Smooth expand/collapse without measuring heights. */
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--t-med) var(--ease),
+    opacity var(--t-med) var(--ease);
+}
+.collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.collapse > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Clickable surfaces lift slightly. */
+.lift {
+  transition:
+    transform var(--t-fast) var(--ease),
+    box-shadow var(--t-med) var(--ease),
+    border-color var(--t-fast) ease,
+    background-color var(--t-fast) ease;
+}
+.lift:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+.lift:active {
+  transform: translateY(0) scale(0.995);
+}
+
+/* Every press gives feedback. */
+.press {
+  transition:
+    transform var(--t-fast) var(--ease),
+    background-color var(--t-fast) ease,
+    color var(--t-fast) ease,
+    border-color var(--t-fast) ease,
+    opacity var(--t-fast) ease;
+}
+.press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Knowledge map: nodes glide to new positions and fade in when a category opens. */
+.react-flow__node {
+  transition: transform var(--t-slow) var(--ease);
+}
+.react-flow__node-memory > div {
+  animation: pop-in var(--t-med) var(--ease) both;
+}
+.react-flow__edge-path {
+  transition:
+    stroke var(--t-med) ease,
+    opacity var(--t-med) ease;
 }
 
 .shimmer {
@@ -212,4 +351,16 @@ html.theme-switching *::after {
   --xy-controls-button-border-color: var(--line);
   --xy-minimap-background-color: var(--panel);
   --xy-attribution-background-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

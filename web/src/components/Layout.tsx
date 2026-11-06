@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { BookOpenCheck, Brain, Building2, Handshake, Home, ListChecks, LogOut, Monitor, Moon, Sparkles, Sun } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import ErrorBoundary from "./ErrorBoundary";
 import { useApi } from "../hooks";
@@ -47,35 +48,18 @@ export function ThemeSwitch({ size = "sm" }: { size?: "sm" | "md" }) {
 export default function Layout() {
   const { data: health } = useApi<Health>("/health");
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+  // A new page starts at the top (the scroll container is <main>, not the window).
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [location.pathname]);
   return (
     <div className="flex h-full">
       <aside className="hidden w-[260px] shrink-0 flex-col border-r border-line bg-sidebar px-4 py-6 lg:flex">
         <div className="px-2.5">
           <Brand />
         </div>
-        <nav className="mt-8 flex flex-1 flex-col gap-1">
-          {NAV.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                clsx(
-                  "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] transition",
-                  isActive ? "bg-raised font-medium text-fg shadow-card" : "text-soft hover:bg-fg/[0.04] hover:text-fg"
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-accent-strong dark:bg-accent" />}
-                  <Icon className={clsx("h-[17px] w-[17px] shrink-0", isActive ? "text-accent-strong dark:text-accent" : "text-mute")} />
-                  {label}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
+        <SideNav pathname={location.pathname} />
         <MemoryStatus health={health} />
         <div className="mt-3 flex items-center justify-between px-1">
           <span className="text-[12px] text-mute">Theme</span>
@@ -99,7 +83,7 @@ export default function Layout() {
               key={to}
               to={to}
               end={end}
-              className={({ isActive }) => clsx("whitespace-nowrap rounded-md px-3 py-1.5 text-[13px]", isActive ? "bg-raised font-medium text-fg" : "text-soft")}
+              className={({ isActive }) => clsx("press whitespace-nowrap rounded-md px-3 py-1.5 text-[13px] transition-colors", isActive ? "bg-raised font-medium text-fg" : "text-soft")}
             >
               {label}
             </NavLink>
@@ -116,15 +100,75 @@ export default function Layout() {
         {health && !health.llm.configured && (
           <div className="border-b border-bad/25 bg-bad/10 px-8 py-2.5 text-[13px] text-bad">LLM_API_KEY is not set on the server; analysis and negotiation are disabled.</div>
         )}
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div className="mx-auto w-full max-w-[1360px] px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
             <ErrorBoundary resetKey={location.pathname}>
-              <Outlet />
+              {/* Keyed by path: every page change replays the entrance. */}
+              <div key={location.pathname} className="page-enter">
+                <Outlet />
+              </div>
             </ErrorBoundary>
           </div>
         </main>
       </div>
     </div>
+  );
+}
+
+/** Desktop navigation. One highlight slides to the active item instead of each item toggling its own. */
+function SideNav({ pathname }: { pathname: string }) {
+  const nav = useRef<HTMLElement>(null);
+  const [box, setBox] = useState<{ y: number; h: number } | null>(null);
+  const [animate, setAnimate] = useState(false);
+  useLayoutEffect(() => {
+    const root = nav.current;
+    if (!root) return;
+    const measure = () => {
+      const el = root.querySelector<HTMLElement>('a[aria-current="page"]');
+      setBox(el && el.offsetHeight ? { y: el.offsetTop, h: el.offsetHeight } : null);
+    };
+    measure();
+    // Re-measure when the sidebar first becomes visible or its layout changes (fonts, breakpoints).
+    const ro = new ResizeObserver(measure);
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, [pathname]);
+  useEffect(() => {
+    const t = window.setTimeout(() => setAnimate(true), 50);
+    return () => window.clearTimeout(t);
+  }, []);
+  return (
+    <nav ref={nav} className="relative mt-8 flex flex-1 flex-col gap-1">
+      {box && (
+        <span
+          aria-hidden
+          className="absolute inset-x-0 top-0 rounded-lg bg-raised shadow-card"
+          style={{ transform: `translateY(${box.y}px)`, height: box.h, transition: animate ? "transform var(--t-med) var(--ease)" : "none" }}
+        >
+          <span className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-accent-strong dark:bg-accent" />
+        </span>
+      )}
+      {NAV.map(({ to, label, icon: Icon, end }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={end}
+          className={({ isActive }) =>
+            clsx(
+              "press relative z-10 flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px]",
+              isActive ? "font-medium text-fg" : "text-soft hover:bg-fg/[0.04] hover:text-fg"
+            )
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <Icon className={clsx("h-[17px] w-[17px] shrink-0 transition-colors duration-[var(--t-med)]", isActive ? "text-accent-strong dark:text-accent" : "text-mute")} />
+              {label}
+            </>
+          )}
+        </NavLink>
+      ))}
+    </nav>
   );
 }
 

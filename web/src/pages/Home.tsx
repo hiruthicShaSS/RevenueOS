@@ -7,7 +7,7 @@ import { api, daysAgo, fmtDate, fmtMoney, type AskResult, type Commitment, type 
 import { setLastRetrieval, useApi } from "../hooks";
 import { useUser } from "../auth";
 import { useTokens, type Tokens } from "../theme";
-import { Badge, Card, ErrorBox, MD, MemoryRow, SectionTitle, Select, Skeleton, Spinner, Stat, StatusDot } from "../components/ui";
+import { AnimatedNumber, Badge, Card, ErrorBox, MD, MemoryRow, SectionTitle, Select, Skeleton, Spinner, Stat, StatusDot } from "../components/ui";
 
 interface OverviewData {
   metrics: {
@@ -61,7 +61,7 @@ export default function Home() {
 
   return (
     <div className="space-y-12">
-      <section className="mx-auto max-w-3xl pt-2 text-center md:pt-6">
+      <section className="stagger mx-auto max-w-3xl pt-2 text-center md:pt-6">
         <div className="text-[14px] text-mute">
           {greeting()}, <span className="font-medium text-soft">{me.name.split(" ")[0]}</span>
         </div>
@@ -76,33 +76,33 @@ export default function Home() {
         <SectionTitle title="Pipeline at a glance" subtitle="Your CRM remembers what happened. RevenueOS remembers why, and what you promised to do next." />
         {error && <ErrorBox error={error} onRetry={reload} />}
 
-        <div className="grid grid-cols-2 gap-5 lg:grid-cols-[1.25fr_1.25fr_1fr_1fr_1fr]">
+        <div className="stagger grid grid-cols-2 gap-5 lg:grid-cols-[1.25fr_1.25fr_1fr_1fr_1fr]">
           {loading && !m ? (
             Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[118px]" />)
           ) : m ? (
             <>
-              <Stat emphasis label="Open pipeline" value={fmtMoney(m.pipeline)} hint={`${m.openDeals} open deals`} />
-              <Stat emphasis label="Expected revenue" value={fmtMoney(m.expected)} hint="Probability-weighted" tone="good" />
-              <Stat label="Deals at risk" value={m.atRiskCount} tone={m.atRiskCount ? "bad" : undefined} hint={`${fmtMoney(m.atRiskAmount)} exposed`} />
-              <Stat label="Open objections" value={fmtMoney(m.objectionExposure)} tone="warn" hint="Pipeline affected" />
-              <Stat label="Promises overdue" value={m.overdueCommitments} tone={m.overdueCommitments ? "bad" : "good"} hint={`${m.upcomingCommitments} due in 7 days`} />
+              <Stat emphasis label="Open pipeline" value={<AnimatedNumber value={m.pipeline} format={fmtMoney} />} hint={`${m.openDeals} open deals`} />
+              <Stat emphasis label="Expected revenue" value={<AnimatedNumber value={m.expected} format={fmtMoney} />} hint="Probability-weighted" tone="good" />
+              <Stat label="Deals at risk" value={<AnimatedNumber value={m.atRiskCount} />} tone={m.atRiskCount ? "bad" : undefined} hint={`${fmtMoney(m.atRiskAmount)} exposed`} />
+              <Stat label="Open objections" value={<AnimatedNumber value={m.objectionExposure} format={fmtMoney} />} tone="warn" hint="Pipeline affected" />
+              <Stat label="Promises overdue" value={<AnimatedNumber value={m.overdueCommitments} />} tone={m.overdueCommitments ? "bad" : "good"} hint={`${m.upcomingCommitments} due in 7 days`} />
             </>
           ) : null}
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-5">
+        <div className="stagger mt-6 grid gap-6 lg:grid-cols-5">
           <Card className="lg:col-span-3" tone="mem" title="AI insights" subtitle="Found by connecting CRM state with what customers actually said">
             {!data ? (
               <Skeleton className="h-48" />
             ) : data.insights.length === 0 ? (
               <div className="text-[14px] text-mute">No risks detected.</div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="stagger space-y-2.5">
                 {data.insights.slice(0, 5).map((i, k) => (
                   <Link
                     key={k}
                     to={i.customerId ? `/customers/${i.customerId}` : "#"}
-                    className="group flex gap-3.5 rounded-xl border border-line bg-raised px-4 py-3.5 transition hover:border-line-2"
+                    className="lift group flex gap-3.5 rounded-xl border border-line bg-raised px-4 py-3.5 hover:border-line-2"
                   >
                     {i.severity === "high" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-bad" /> : <Info className="mt-0.5 h-4 w-4 shrink-0 text-warn" />}
                     <div className="min-w-0 flex-1">
@@ -151,7 +151,7 @@ export default function Home() {
           </Card>
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="stagger mt-6 grid gap-6 lg:grid-cols-3">
           <Card title="Pipeline by stage" subtitle="Open deal value">
             <div className="h-56">{data && <StageChart data={data.byStage.filter((s) => !s.stage.startsWith("Closed"))} t={t} />}</div>
           </Card>
@@ -175,7 +175,7 @@ export default function Home() {
                       </div>
                       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-fg/[0.06]">
                         <div
-                          className={clsx("h-full rounded-full", a.risk === "high" ? "bg-bad/70" : a.risk === "medium" ? "bg-warn/70" : "bg-good/70")}
+                          className={clsx("bar-grow h-full rounded-full", a.risk === "high" ? "bg-bad/70" : a.risk === "medium" ? "bg-warn/70" : "bg-good/70")}
                           style={{ width: `${Math.max(4, (a.last30 / max) * 100)}%` }}
                         />
                       </div>
@@ -187,14 +187,14 @@ export default function Home() {
           </Card>
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="stagger mt-6 grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2" title="Recent activity" subtitle="What the team logged most recently">
             {!data ? (
               <Skeleton className="h-60" />
             ) : data.recentActivity.length === 0 ? (
               <div className="text-[14px] text-mute">Nothing logged yet.</div>
             ) : (
-              <ol className="relative space-y-5 before:absolute before:bottom-2 before:left-[15px] before:top-2 before:w-px before:bg-line">
+              <ol className="stagger relative space-y-5 before:absolute before:bottom-2 before:left-[15px] before:top-2 before:w-px before:bg-line">
                 {data.recentActivity.slice(0, 6).map((r) => (
                   <li key={r.id} className="relative flex gap-4">
                     <KindIcon kind={r.kind} />
@@ -461,7 +461,7 @@ function AskBox() {
             onClick={() => send()}
             disabled={!q.trim() || busy}
             aria-label="Ask"
-            className="ml-auto grid h-10 w-10 place-items-center rounded-xl bg-accent text-on-accent transition hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-40"
+            className="press ml-auto grid h-10 w-10 place-items-center rounded-xl bg-accent text-on-accent hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ArrowUp className="h-[18px] w-[18px]" />
           </button>
@@ -471,7 +471,7 @@ function AskBox() {
       {turns.length === 0 && (
         <div className="mt-5 flex flex-wrap justify-center gap-2.5">
           {SUGGESTIONS.map((s) => (
-            <button key={s} onClick={() => send(s)} className="rounded-full border border-line-2 bg-panel px-4 py-2 text-[13px] text-soft transition hover:border-accent hover:text-fg">
+            <button key={s} onClick={() => send(s)} className="press rounded-full border border-line-2 bg-panel px-4 py-2 text-[13px] text-soft hover:border-accent hover:text-fg">
               {s}
             </button>
           ))}

@@ -51,7 +51,7 @@ export default function Negotiator() {
   const chips = (ev: string[]) => <EvidenceChips ev={ev} focus={focus} onFocus={setFocus} />;
 
   return (
-    <div>
+    <div className="stagger">
       <PageHeader title="Deal Negotiator" subtitle="Advice grounded in everything your team has heard from this account, plus what has won and lost on other deals. Every recommendation cites its evidence." />
 
       <Card>
@@ -76,7 +76,7 @@ export default function Negotiator() {
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {SUGGESTIONS.map((s) => (
-            <button key={s} onClick={() => setProposal(s)} className="rounded-full border border-line-2 px-3.5 py-1.5 text-[12.5px] text-soft transition hover:border-accent hover:text-fg">
+            <button key={s} onClick={() => setProposal(s)} className="press rounded-full border border-line-2 px-3.5 py-1.5 text-[12.5px] text-soft hover:border-accent hover:text-fg">
               {s}
             </button>
           ))}
@@ -95,7 +95,7 @@ export default function Negotiator() {
 
         {b && v && (
           <div className="fade-in grid gap-8 xl:grid-cols-[minmax(0,1fr)_380px]">
-            <div className="min-w-0 space-y-6">
+            <div className="stagger min-w-0 space-y-6">
               {/* 1-2: verdict and confidence */}
               <section className="rounded-2xl border border-line bg-panel p-7 shadow-card">
                 <div className="flex flex-wrap items-start gap-x-10 gap-y-5">
@@ -132,7 +132,7 @@ export default function Negotiator() {
               </section>
 
               {/* 3-5: actual blocker, what they say, what memory reveals */}
-              <div className="grid gap-5 md:grid-cols-3">
+              <div className="stagger grid gap-5 md:grid-cols-3">
                 <Tile icon={<Target className="h-4 w-4" />} label="Actual blocker" tone="mem">
                   <div className="text-[15px] font-medium leading-snug text-fg">{b.real_blocker}</div>
                 </Tile>
@@ -264,7 +264,7 @@ function ConfidenceMeter({ level }: { level: string }) {
     <div className="mt-2.5 flex items-center gap-2.5">
       <div className="flex gap-1">
         {[1, 2, 3].map((i) => (
-          <span key={i} className={clsx("h-2 w-7 rounded-full", i <= n ? "bg-accent" : "bg-fg/10")} />
+          <span key={i} className={clsx("h-2 w-7 rounded-full", i <= n ? "bar-grow bg-accent" : "bg-fg/10")} style={{ animationDelay: `${i * 120}ms` }} />
         ))}
       </div>
       <span className="text-[14px] font-medium capitalize text-fg">{level}</span>
@@ -282,7 +282,7 @@ function EvidenceChips({ ev, focus, onFocus }: { ev: string[]; focus: string | n
           onClick={() => onFocus(r)}
           title="Show this evidence"
           className={clsx(
-            "rounded-md border px-1.5 py-0.5 font-mono text-[11.5px] transition",
+            "press rounded-md border px-1.5 py-0.5 font-mono text-[11.5px]",
             focus === r
               ? "border-mem bg-mem/15 text-fg"
               : r.startsWith("C")
@@ -310,7 +310,7 @@ function EvidencePanel({ evidence, focus, customerId }: { evidence: Evidence; fo
   }, [focus]);
   const shown = entries.filter(([ref]) => filter === "all" || ref.startsWith(filter));
   return (
-    <aside className="min-w-0 xl:sticky xl:top-4 xl:self-start">
+    <aside className="slide-in-right min-w-0 xl:sticky xl:top-4 xl:self-start">
       <Card title="Supporting evidence" subtitle="Every reference cited above, with its source" bodyClassName="!pt-3">
         <div className="mb-3 flex flex-wrap gap-1.5 text-[12px]">
           {(
@@ -353,7 +353,7 @@ function EvidenceCard({ refId, e, active, customerId }: { refId: string; e: Evid
     if (active) setOpen(true);
   }, [active]);
   return (
-    <div id={`ev-${refId}`} className={clsx("rounded-xl border p-3.5 transition", active ? "border-mem bg-mem/[0.07]" : "border-line bg-raised")}>
+    <div id={`ev-${refId}`} className={clsx("rounded-xl border p-3.5 transition-[border-color,background-color] duration-[var(--t-med)]", active ? "border-mem bg-mem/[0.07]" : "border-line bg-raised")}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-mute">
         <span className="font-mono font-semibold text-fg">{refId}</span>
         {isC ? (
