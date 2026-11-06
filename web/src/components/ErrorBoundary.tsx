@@ -18,9 +18,9 @@ export default class ErrorBoundary extends Component<{ children: ReactNode; rese
     return (
       <div className="mx-auto mt-16 max-w-lg rounded-2xl border border-bad/25 bg-bad/5 p-6 text-center">
         <AlertTriangle className="mx-auto h-6 w-6 text-bad" />
-        <div className="mt-3 text-sm font-medium text-white">This page hit an error</div>
+        <div className="mt-3 text-sm font-medium text-fg">This page hit an error</div>
         <div className="mt-1 break-words text-xs text-mute">{this.state.error.message}</div>
-        <button onClick={() => this.setState({ error: null })} className="mt-4 rounded-lg border border-line-2 px-3 py-1.5 text-xs text-soft hover:text-white">
+        <button onClick={() => this.setState({ error: null })} className="mt-4 rounded-lg border border-line-2 px-3 py-1.5 text-xs text-soft hover:text-fg">
           Try again
         </button>
       </div>

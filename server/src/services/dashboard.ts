@@ -81,7 +81,48 @@ export async function overview() {
   }
   insights.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "high" ? -1 : b.severity === "high" ? 1 : a.severity === "medium" ? -1 : 1));
 
+  // Recent activity: what the team logged lately, across accounts.
+  const recent = await db.query(
+    `SELECT i.id, i.kind, i.occurred_at, i.customer_id, c.name AS customer, r.name AS rep, r.title AS rep_title,
+       i.analysis->>'summary' AS summary, i.analysis->'source'->>'fileName' AS file
+     FROM interactions i JOIN customers c ON c.id=i.customer_id LEFT JOIN reps r ON r.id=i.rep_id
+     ORDER BY i.occurred_at DESC LIMIT 8`
+  );
+  const recentActivity = recent.map((r: any) => ({
+    id: r.id,
+    kind: r.kind,
+    occurredAt: new Date(r.occurred_at).toISOString(),
+    customerId: r.customer_id,
+    customer: r.customer,
+    rep: r.rep,
+    repTitle: r.rep_title,
+    summary: r.summary ?? null,
+    file: r.file ?? null,
+  }));
+
+  // Account activity: interactions per account over 30 days, with the open deal's state.
+  const activity = await db.query(
+    `SELECT c.id, c.name,
+       (SELECT count(*)::int FROM interactions i WHERE i.customer_id=c.id AND i.occurred_at > now() - interval '30 days') AS last30,
+       (SELECT max(occurred_at) FROM interactions i WHERE i.customer_id=c.id) AS last_touch,
+       (SELECT risk FROM deals d WHERE d.customer_id=c.id AND d.status='open' ORDER BY amount DESC LIMIT 1) AS risk,
+       (SELECT amount FROM deals d WHERE d.customer_id=c.id AND d.status='open' ORDER BY amount DESC LIMIT 1) AS amount
+     FROM customers c ORDER BY last30 DESC, last_touch DESC NULLS LAST`
+  );
+  const accountActivity = activity
+    .filter((a: any) => a.amount !== null)
+    .map((a: any) => ({
+      customerId: a.id,
+      customer: a.name,
+      last30: a.last30,
+      lastTouch: a.last_touch ? new Date(a.last_touch).toISOString() : null,
+      risk: a.risk,
+      amount: Number(a.amount),
+    }));
+
   return {
+    recentActivity,
+    accountActivity,
     metrics: {
       pipeline,
       expected,

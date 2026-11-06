@@ -18,6 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { HindsightClient } from "@vectorize-io/hindsight-client";
+import { makeDocx, makePdf } from "./fixtures.js";
 
 const PORT = 4600 + Math.floor(Math.random() * 300);
 const BASE = `http://localhost:${PORT}/api`;
@@ -75,6 +76,14 @@ async function call<T = any>(method: string, p: string, body?: unknown, auth: st
 }
 const get = <T = any>(p: string) => call<T>("GET", p);
 const post = <T = any>(p: string, b: unknown = {}) => call<T>("POST", p, b);
+
+async function upload<T = any>(fileName: string, data: Buffer, fields: Record<string, string> = {}): Promise<{ status: number; data: T }> {
+  const form = new FormData();
+  form.append("file", new Blob([new Uint8Array(data)]), fileName);
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  const r = await fetch(`${BASE}/documents/extract`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
+  return { status: r.status, data: (await r.json().catch(() => null)) as T };
+}
 
 /** Sign in as a teammate; later calls run as them. */
 async function signIn(email: string, designation: string) {
@@ -332,7 +341,88 @@ describe("portfolio questions and learning", () => {
     const o = ok(await get("/overview"), "overview after");
     assert.equal(o.deals.find((d: any) => d.id === "deal_brightwater").status, "won");
     const afterPb = ok(await get("/playbook"), "playbook after");
-    assert.ok(afterPb.total > before.total, "playbook gained memories");
+    assert.ok(afterPb.lessons.length > before.lessons.length, "playbook gained a lesson");
+  });
+
+  test("lessons reaching the shared playbook are anonymised", LONG, async () => {
+    const r = ok(
+      await post("/deals/deal_pinecrest/outcome", {
+        outcome: "lost",
+        primaryBlocker: "Lisa Tran at Pinecrest Credit Union said the board caps software at $75k/yr",
+        tactics: "Jordan Blake offered Pinecrest a 3-year term at $71,500 on 2026-11-01",
+        reason: "Pinecrest Credit Union's board rejected it; Lisa Tran wanted approval workflows we lacked",
+      }),
+      "outcome"
+    );
+    assert.equal(r.ok, true, r.errors?.join("; "));
+    const text = JSON.stringify(r.lesson);
+    for (const banned of ["Pinecrest", "Lisa", "Tran", "Jordan", "Blake", "$75k", "71,500", "2026-11-01"]) {
+      assert.ok(!text.includes(banned), `lesson leaks "${banned}": ${text}`);
+    }
+    const pb = ok(await get("/playbook"), "playbook");
+    const stored = pb.lessons.find((l: any) => l.id === "lesson-deal_pinecrest");
+    assert.ok(stored, "lesson stored in the playbook bank");
+    assert.ok(!JSON.stringify(stored).includes("Pinecrest"), "stored lesson has no customer name");
+    assert.ok(pb.patterns.every((p: any) => ["strong", "moderate", "limited"].includes(p.confidence)), "every pattern states its evidence strength");
+  });
+});
+
+describe("document uploads", () => {
+  test("a PDF is identified, previewed without saving, then confirmed into Hindsight", LONG, async () => {
+    const pdf = makePdf([
+      ["Call notes - Solace Insurance Group", "Diane Foster (CFO) reviewed our migration cost analysis and called it credible.", "She still compares us with LogiTrack's renewal price."],
+      ["Raj Malhotra asked for a two-year price lock.", "I promised a revised quote with a two-year price lock by Friday."],
+    ]);
+    const before = ok(await get("/customers/cus_solace"), "solace before").interactions.length;
+    const p = ok(await upload("solace-call.pdf", pdf, { occurredAt: new Date().toISOString() }), "extract");
+    assert.equal(p.file.pages, 2);
+    assert.equal(p.identification.customer?.id, "cus_solace", JSON.stringify(p.identification));
+    assert.equal(p.needsCustomer, false);
+    assert.ok(p.analysis?.summary, "preview has an analysis");
+    assert.equal(ok(await get("/customers/cus_solace"), "solace mid").interactions.length, before, "nothing saved before confirm");
+
+    const saved = ok(await post(`/documents/${p.draftId}/confirm`), "confirm");
+    assert.equal(saved.memoryStatus, "stored", saved.memoryError);
+    const snap = ok(await get("/customers/cus_solace"), "solace after");
+    const doc = snap.interactions.find((i: any) => i.kind === "document");
+    assert.ok(doc, "document interaction saved");
+    assert.equal(doc.analysis.source.fileName, "solace-call.pdf");
+    assert.match(doc.raw_text, /\[Page 2\]/, "page markers kept for provenance");
+
+    const map = ok(await get("/customers/cus_solace/memory-map"), "map");
+    assert.ok(map.nodes.some((n: any) => n.source.file === "solace-call.pdf"), "document memories trace back to the file");
+    assert.equal((await post(`/documents/${p.draftId}/confirm`)).status, 404, "a draft can only be confirmed once");
+  });
+
+  test("a document naming no account asks the user to choose", LONG, async () => {
+    const docx = makeDocx([{ text: "Discovery notes", heading: true }, { text: "The logistics manager wants supplier shipment tracking to replace a shared spreadsheet." }]);
+    const p = ok(await upload("notes.docx", docx), "extract");
+    assert.equal(p.needsCustomer, true);
+    assert.equal(p.customer, null);
+    assert.equal(p.analysis, null);
+    assert.equal((await post(`/documents/${p.draftId}/confirm`)).status, 400, "cannot confirm without a customer");
+    const a = ok(await post(`/documents/${p.draftId}/analyze`, { customerId: "cus_kestrel" }), "analyze for chosen account");
+    assert.equal(a.customer.id, "cus_kestrel");
+    assert.ok(a.analysis?.summary);
+    ok(await post(`/documents/${p.draftId}/discard`), "discard");
+    assert.equal((await post(`/documents/${p.draftId}/confirm`)).status, 404, "discarded draft is gone");
+  });
+
+  test("unsupported and unreadable files are rejected", async () => {
+    assert.equal((await upload("image.png", Buffer.from("not really a png"))).status, 400);
+    assert.equal((await upload("empty.txt", Buffer.from("  "))).status, 422);
+  });
+});
+
+describe("knowledge map", () => {
+  test("shows only the selected account's memories, with recorded links and categories", LONG, async () => {
+    const map = ok(await get("/customers/cus_halcyon/memory-map"), "map");
+    assert.ok(map.nodes.length > 0);
+    assert.equal(map.categories.reduce((s: number, c: any) => s + c.count, 0), map.nodes.length, "every memory has one category");
+    const ids = new Set(map.nodes.map((n: any) => n.id));
+    assert.ok(map.links.every((l: any) => ids.has(l.source) && ids.has(l.target)), "links stay inside the account");
+    for (const n of map.nodes) assert.doesNotMatch(n.text, /Meridian|Angela Ruiz|Tom Becker|Solace/, `leaked: ${n.text}`);
+    assert.ok(map.nodes.some((n: any) => n.stakeholders.length > 0), "stakeholders are attached");
   });
 });
 

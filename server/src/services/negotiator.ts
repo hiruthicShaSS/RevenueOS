@@ -10,10 +10,11 @@ const BriefSchema = z.object({
   headline: z.string(),
   stated_blocker: z.string().nullable().optional(),
   real_blocker: z.string(),
+  memory_reveals: z.object({ text: z.string(), evidence: Ev }).nullable().optional(),
   verdict: z.enum(["hold", "proceed", "adjust"]).catch("adjust"),
   proposal_assessment: z.string().nullable().optional(),
   do_not: z.array(z.object({ action: z.string(), why: z.string(), evidence: Ev })).default([]),
-  strategy: z.array(z.object({ step: z.string(), why: z.string(), evidence: Ev })).default([]),
+  strategy: z.array(z.object({ step: z.string(), why: z.string(), owner: z.string().nullable().optional(), evidence: Ev })).default([]),
   risks: z
     .array(z.object({ risk: z.string(), severity: z.enum(["low", "medium", "high"]).catch("medium"), evidence: Ev }))
     .default([]),
@@ -129,8 +130,11 @@ export async function negotiationBrief(customerId: string, proposal?: string, as
       `CROSS-DEAL PLAYBOOK recalled from Hindsight (refs, anonymised outcomes of other deals):`,
       pRefs.map(({ ref, m }) => `[${ref}] ${m.text}`).join("\n") || "(no closed-deal learnings yet)",
       ``,
-      `Return JSON: headline (one-sentence diagnosis), stated_blocker, real_blocker, verdict (hold|proceed|adjust — about the proposed move or the current approach),`,
-      `proposal_assessment, do_not [{action, why, evidence}], strategy [{step, why, evidence}] (ordered, 3-6 steps), risks [{risk, severity, evidence}],`,
+      `Return JSON: headline (one-sentence diagnosis),`,
+      `stated_blocker: the objection the CUSTOMER has actually voiced according to the M# memories (paraphrase it and end with the refs, e.g. "Price is too high (M2)"); null if the memories record no objection from them. Never derive it from our rep's proposed move.`,
+      `real_blocker (what the evidence shows, a short phrase),`,
+      `memory_reveals {text: 2-3 sentences on what the account's history shows that the stated objection hides, evidence}, verdict (hold|proceed|adjust — about the proposed move or the current approach),`,
+      `proposal_assessment, do_not [{action (short imperative), why, evidence}], strategy [{step (short imperative, max ~12 words), why (1-2 sentences), owner (who should do it) , evidence}] (ordered, 3-6 steps), risks [{risk, severity, evidence}],`,
       `stakeholder_plan [{name, approach, evidence}], playbook_insight {text, evidence} or null if no P refs, confidence. evidence = array of ref strings like "M3","C1","P2".`,
     ].join("\n"),
   });

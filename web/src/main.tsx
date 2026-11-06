@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./index.css";
 import { AuthProvider, useAuth } from "./auth";
+import { ThemeProvider } from "./theme";
 import Layout from "./components/Layout";
 import { Spinner } from "./components/ui";
 import Home from "./pages/Home";
@@ -41,10 +42,12 @@ function App() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   </StrictMode>
 );

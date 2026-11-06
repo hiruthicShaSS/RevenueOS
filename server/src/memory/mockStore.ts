@@ -77,6 +77,16 @@ export class MockStore implements MemoryStore {
     return { items: rows.map((r) => toHit(r, null)), total: n };
   }
 
+  async graph(bankId: string, opts?: { limit?: number }) {
+    const { items, total } = await this.list(bankId, { limit: opts?.limit ?? 500 });
+    return { nodes: items.map((m) => ({ ...m, proofCount: null })), links: [], total };
+  }
+
+  async listDocuments(bankId: string) {
+    const { items } = await this.list(bankId, { limit: 500 });
+    return items.map((m) => ({ id: m.documentId ?? m.id, text: m.text, tags: m.tags, metadata: null, createdAt: m.occurredAt, eventDate: m.occurredAt, memoryCount: 1 }));
+  }
+
   async listMentalModels(): Promise<MentalModel[]> {
     return [];
   }

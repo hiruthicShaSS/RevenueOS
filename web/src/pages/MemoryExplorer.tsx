@@ -1,291 +1,256 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Database, Search, Sparkles } from "lucide-react";
 import clsx from "clsx";
-import { api, fmtDate, type AccountSnapshot, type MemoryHit } from "../api";
+import { List, Network, RefreshCw, Search, X } from "lucide-react";
+import { fmtDate } from "../api";
 import { useApi, useLastRetrieval } from "../hooks";
-import { Badge, Button, Card, Empty, ErrorBox, PageHeader, MemoryRow, Select, Skeleton, inputCls } from "../components/ui";
+import { useTheme, useTokens } from "../theme";
+import KnowledgeMap, { categoryColor, matchesFilters, MemoryDetail, type MapData, type MapFilters } from "../components/KnowledgeMap";
+import MemoryList from "../components/MemoryList";
+import { Button, ErrorBox, PageHeader, Segmented, Select, Skeleton, inputCls } from "../components/ui";
 
-interface MemoryData {
-  bank: string;
-  mode: string;
-  total: number;
-  items: MemoryHit[];
-  error: string | null;
-  stakeholders: AccountSnapshot["stakeholders"];
-  interactions: AccountSnapshot["interactions"];
-}
-
-const TYPES = [
-  ["all", "All"],
-  ["world", "Facts"],
-  ["experience", "Interactions"],
-  ["observation", "Consolidated observations"],
-];
+const SINCE = [
+  ["", "Any time"],
+  ["30", "Last 30 days"],
+  ["90", "Last 90 days"],
+  ["365", "Last year"],
+] as const;
 
 export default function MemoryExplorer() {
   const [params, setParams] = useSearchParams();
-  const lastForDefault = useLastRetrieval();
-  const customerId = params.get("customer") ?? lastForDefault?.customerId ?? "cus_halcyon";
-  const { data: customers } = useApi<{ id: string; name: string }[]>("/customers");
-  const { data, error, loading, reload } = useApi<MemoryData>(`/customers/${customerId}/memory`, [customerId]);
   const last = useLastRetrieval();
-  const [type, setType] = useState("all");
-  const [query, setQuery] = useState("");
-  const [probe, setProbe] = useState<{ hits: MemoryHit[]; ms: number; query: string } | null>(null);
-  const [probing, setProbing] = useState(false);
-  const [probeErr, setProbeErr] = useState<string | null>(null);
+  const customerId = params.get("customer") ?? last?.customerId ?? "cus_halcyon";
+  const deepMemory = params.get("memory");
+  const view = params.get("view") === "list" ? "list" : "map";
+  const { resolved } = useTheme();
+  const t = useTokens();
+  const dark = resolved === "dark";
 
-  const items = useMemo(() => (data?.items ?? []).filter((m) => type === "all" || m.type === type), [data, type]);
-  const counts = useMemo(() => {
-    const c: Record<string, number> = {};
-    (data?.items ?? []).forEach((m) => (c[m.type ?? "other"] = (c[m.type ?? "other"] ?? 0) + 1));
-    return c;
-  }, [data]);
+  const { data: customers } = useApi<{ id: string; name: string }[]>("/customers");
+  const [reloadKey, setReloadKey] = useState(0);
+  const { data, error, loading, reload } = useApi<MapData>(`/customers/${customerId}/memory-map`, [customerId, reloadKey]);
 
-  // Entity co-occurrence: who appears alongside whom in remembered facts.
-  const graph = useMemo(() => {
-    const names = new Set((data?.stakeholders ?? []).map((s) => s.name));
-    const pair = new Map<string, number>();
-    const mentions = new Map<string, number>();
-    for (const m of data?.items ?? []) {
-      const canonical = (e: string) => (names.has(e) ? e : [...names].find((n) => n.split(" ")[0] === e || e.startsWith(n)) ?? null);
-      const ents = [...new Set(m.entities.map(canonical).filter((e): e is string => !!e))];
-      ents.forEach((e) => mentions.set(e, (mentions.get(e) ?? 0) + 1));
-      for (let i = 0; i < ents.length; i++)
-        for (let j = i + 1; j < ents.length; j++) {
-          const k = [ents[i], ents[j]].sort().join(" ↔ ");
-          pair.set(k, (pair.get(k) ?? 0) + 1);
-        }
+  const [q, setQ] = useState("");
+  const [category, setCategory] = useState("");
+  const [stakeholder, setStakeholder] = useState("");
+  const [sinceDays, setSinceDays] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<string | null>(null);
+  const [focusCategory, setFocusCategory] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+
+  // Isolation: everything resets when the account changes.
+  useEffect(() => {
+    setQ("");
+    setCategory("");
+    setStakeholder("");
+    setSinceDays("");
+    setExpanded(new Set());
+    setSelected(null);
+    setFocusCategory(null);
+  }, [customerId]);
+
+  const filters: MapFilters = useMemo(
+    () => ({ q, category, stakeholder, since: sinceDays ? new Date(Date.now() - Number(sinceDays) * 864e5).toISOString().slice(0, 10) : "" }),
+    [q, category, stakeholder, sinceDays]
+  );
+  const filtering = !!(q || category || stakeholder || sinceDays);
+
+  // While filtering, open every category that has a match.
+  useEffect(() => {
+    if (!data || !filtering) return;
+    setExpanded(new Set(data.nodes.filter((n) => matchesFilters(n, filters)).map((n) => n.category)));
+  }, [data, filters, filtering]);
+
+  // Deep link from the Negotiator / Ask: open the memory's category and select it.
+  useEffect(() => {
+    if (!data || !deepMemory) return;
+    const n = data.nodes.find((x) => x.id === deepMemory);
+    setMissing(!n);
+    if (n) {
+      setExpanded((s) => new Set([...s, n.category]));
+      setSelected(n.id);
+      setFocusCategory(n.category);
     }
-    return { mentions: [...mentions.entries()].sort((a, b) => b[1] - a[1]), pairs: [...pair.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8) };
-  }, [data]);
+  }, [data, deepMemory]);
 
-  async function runProbe() {
-    if (query.trim().length < 2) return;
-    setProbing(true);
-    setProbeErr(null);
-    try {
-      const r = await api.post<{ hits: MemoryHit[]; ms: number; query: string }>(`/customers/${customerId}/recall`, { query });
-      setProbe(r);
-    } catch (e) {
-      setProbeErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setProbing(false);
+  const setView = (v: "map" | "list") => {
+    const p = new URLSearchParams(params);
+    p.set("customer", customerId);
+    if (v === "list") p.set("view", "list");
+    else p.delete("view");
+    setParams(p);
+  };
+
+  const toggle = (cat: string) =>
+    setExpanded((s) => {
+      const n = new Set(s);
+      if (n.has(cat)) n.delete(cat);
+      else n.add(cat);
+      return n;
+    });
+
+  const jump = (cat: string) => {
+    setExpanded((s) => new Set([...s, cat]));
+    setFocusCategory(null);
+    window.setTimeout(() => setFocusCategory(cat), 0);
+  };
+
+  const select = (id: string | null) => {
+    setSelected(id);
+    if (id && data) {
+      const n = data.nodes.find((x) => x.id === id);
+      if (n && !expanded.has(n.category)) setExpanded((s) => new Set([...s, n.category]));
     }
-  }
+  };
 
-  const customerName = customers?.find((c) => c.id === customerId)?.name ?? "";
+  const customerName = customers?.find((c) => c.id === customerId)?.name ?? data?.customer.name ?? "";
+  const matchCount = data ? data.nodes.filter((n) => matchesFilters(n, filters)).length : 0;
 
   return (
-    <div className="space-y-6">
+    <div>
       <PageHeader
         title="Memory Explorer"
-        subtitle="Exactly what RevenueOS remembers about an account, straight from its Hindsight memory bank."
+        subtitle="Explore what RevenueOS understands about an account, straight from its private Hindsight memory."
         action={
-          <div className="flex items-center gap-2">
-            <Select value={customerId} onChange={(v) => setParams({ customer: v })}>
+          <>
+            <Select
+              value={customerId}
+              onChange={(v) => {
+                const p = new URLSearchParams();
+                p.set("customer", v);
+                if (view === "list") p.set("view", "list");
+                setParams(p);
+              }}
+              className="min-w-[220px]"
+            >
               {customers?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
             </Select>
-            <Button variant="outline" onClick={reload}>
-              Refresh
+            <Segmented
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "map", label: <><Network className="h-3.5 w-3.5" /> Knowledge map</> },
+                { value: "list", label: <><List className="h-3.5 w-3.5" /> Memory list</> },
+              ]}
+            />
+            <Button variant="ghost" onClick={() => (setReloadKey((k) => k + 1), reload())} title="Reload from Hindsight">
+              <RefreshCw className="h-4 w-4" />
             </Button>
-          </div>
+          </>
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <MiniStat label="Memory bank" value={<span className="font-mono text-[12px]">{data?.bank ?? "…"}</span>} />
-        <MiniStat label="Memories" value={data?.total ?? "…"} />
-        <MiniStat label="Interactions retained" value={data ? `${data.interactions.filter((i) => i.memory_status === "stored").length} / ${data.interactions.length}` : "…"} />
-        <MiniStat label="Observations" value={counts.observation ?? 0} hint="consolidated by Hindsight" />
-      </div>
-
-      {last && last.customerId === customerId && last.memories.length > 0 && (
-        <Card
-          className="border-mem/25"
-          title={
-            <span className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-mem" /> Recalled for the last answer
-            </span>
-          }
-          subtitle={`${last.source} · “${last.question}”`}
-        >
-          <div className="grid gap-2 md:grid-cols-2">
-            {[...last.memories]
-              .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-              .slice(0, 10)
-              .map((m) => (
-                <div key={m.id + (m.ref ?? "")}>
-                  <MemoryRow m={m} refLabel={m.ref} compact />
-                  {m.score != null && (
-                    <div className="mt-1 h-1 overflow-hidden rounded bg-white/5">
-                      <div className="h-full bg-gradient-to-r from-accent-2 to-mem" style={{ width: `${Math.min(100, m.score * 100)}%` }} />
-                    </div>
-                  )}
-                </div>
-              ))}
-          </div>
-        </Card>
-      )}
-
-      <Card title="Recall probe" subtitle={`Run a live Hindsight recall against ${customerName}'s bank: semantic + keyword + graph + temporal retrieval, reranked.`}>
-        <div className="flex gap-2">
-          <input
-            className={inputCls}
-            placeholder="e.g. what did the CTO ask about integration?"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && runProbe()}
-          />
-          <Button onClick={runProbe} loading={probing}>
-            <Search className="h-3.5 w-3.5" /> Recall
-          </Button>
-        </div>
-        {probeErr && (
-          <div className="mt-3">
-            <ErrorBox error={probeErr} />
-          </div>
-        )}
-        {probe && (
-          <div className="mt-4 space-y-2">
-            <div className="text-xs text-mute">
-              {probe.hits.length} memories in {probe.ms} ms
-            </div>
-            {probe.hits.length === 0 && <div className="text-sm text-mute">Nothing relevant remembered.</div>}
-            {probe.hits.map((h, i) => (
-              <div key={h.id} className="grid grid-cols-[1fr_150px] items-start gap-3">
-                <MemoryRow m={h} refLabel={`#${i + 1}`} compact />
-                <ScoreBars h={h} maxKeyword={Math.max(1, ...probe.hits.map((x) => x.scoreBreakdown?.keyword ?? 0))} />
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <Card
-          title="Everything remembered"
-          action={
-            <div className="flex flex-wrap gap-1">
-              {TYPES.map(([k, l]) => (
-                <button key={k} onClick={() => setType(k)} className={clsx("rounded-md px-2 py-1 text-[11px]", type === k ? "bg-white/10 text-white" : "text-mute hover:text-white")}>
-                  {l} {k !== "all" && <span className="font-mono">{counts[k] ?? 0}</span>}
-                </button>
-              ))}
-            </div>
-          }
-        >
+      {view === "list" ? (
+        <MemoryList customerId={customerId} customerName={customerName} reloadKey={reloadKey} />
+      ) : (
+        <>
           {error && <ErrorBox error={error} onRetry={reload} />}
-          {data?.error && <ErrorBox error={data.error} />}
           {loading && !data ? (
-            <Skeleton className="h-64" />
-          ) : items.length === 0 ? (
-            <Empty icon={<Database className="h-6 w-6" />} title="No memories yet">
-              Log an interaction for this account. Hindsight extracts facts, links entities and builds observations as it learns.
-            </Empty>
-          ) : (
-            <div className="space-y-2">
-              {[...items]
-                .sort((a, b) => (b.occurredAt ?? "").localeCompare(a.occurredAt ?? ""))
-                .map((m) => (
-                  <MemoryRow key={m.id} m={m} />
+            <Skeleton className="h-[620px]" />
+          ) : data ? (
+            <div className="space-y-5">
+              {/* summary + category shortcuts */}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] text-mute">
+                <span>
+                  <span className="text-[20px] font-semibold text-fg">{data.total}</span> memories
+                </span>
+                <span>Last updated {data.lastUpdated ? fmtDate(data.lastUpdated) : "never"}</span>
+                <span className="font-mono text-[12px]">{data.bank}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {data.categories.map((c) => (
+                  <button
+                    key={c.id}
+                    disabled={!c.count}
+                    onClick={() => jump(c.id)}
+                    className={clsx(
+                      "flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12.5px] transition disabled:opacity-40",
+                      expanded.has(c.id) ? "border-line-2 bg-raised text-fg shadow-card" : "border-line text-soft hover:border-line-2 hover:text-fg"
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full" style={{ background: categoryColor(c.id, t, dark) }} />
+                    {c.label}
+                    <span className="font-mono text-[11px] text-mute">{c.count}</span>
+                  </button>
                 ))}
-            </div>
-          )}
-        </Card>
+              </div>
 
-        <div className="space-y-6">
-          <Card title="Timeline" subtitle="Interactions that fed this memory">
-            {data?.interactions.length ? (
-              <ol className="relative space-y-4 border-l border-line pl-4">
-                {[...data.interactions].reverse().map((i) => (
-                  <li key={i.id}>
-                    <span className={clsx("absolute -left-[5px] mt-1 h-2.5 w-2.5 rounded-full border-2 border-ink", i.memory_status === "stored" ? "bg-mem" : "bg-mute")} />
-                    <div className="text-[11px] text-mute">
-                      {fmtDate(i.occurred_at)} · {i.rep_name} · {i.kind}
-                    </div>
-                    <div className="mt-0.5 line-clamp-3 text-[12.5px] text-soft">{i.analysis?.summary ?? i.raw_text}</div>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <div className="text-xs text-mute">No interactions.</div>
-            )}
-          </Card>
-          <Card title="People & relationships" subtitle="Entities Hindsight linked across memories">
-            {graph.mentions.length === 0 ? (
-              <div className="text-xs text-mute">No linked people yet.</div>
-            ) : (
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  {graph.mentions.map(([n, c]) => {
-                    const s = data?.stakeholders.find((x) => x.name === n || n.includes(x.name.split(" ")[0]));
-                    return (
-                      <div key={n} className="flex items-center justify-between text-[13px]">
-                        <span className="text-white">
-                          {n} {s?.role && <span className="text-xs text-mute">· {s.role}</span>}
-                        </span>
-                        <Badge tone="mem">{c} memories</Badge>
-                      </div>
-                    );
-                  })}
+              {/* search + filters */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative w-full max-w-xs">
+                  <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-mute" />
+                  <input className={`${inputCls} pl-10`} placeholder="Search all memories" value={q} onChange={(e) => setQ(e.target.value)} />
                 </div>
-                {graph.pairs.length > 0 && (
-                  <div className="border-t border-line pt-3">
-                    <div className="mb-1.5 text-[11px] uppercase tracking-[0.08em] text-mute">Appear together</div>
-                    {graph.pairs.map(([k, c]) => (
-                      <div key={k} className="flex justify-between text-xs text-soft">
-                        <span>{k}</span>
-                        <span className="font-mono text-mute">{c}</span>
-                      </div>
-                    ))}
-                  </div>
+                <Select value={category} onChange={setCategory}>
+                  <option value="">All categories</option>
+                  {data.categories.map((c) => (
+                    <option key={c.id} value={c.id} disabled={!c.count}>
+                      {c.label}
+                    </option>
+                  ))}
+                </Select>
+                <Select value={stakeholder} onChange={setStakeholder}>
+                  <option value="">All stakeholders</option>
+                  {data.stakeholders.map((s) => (
+                    <option key={s.id} value={s.name}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+                <Select value={sinceDays} onChange={setSinceDays}>
+                  {SINCE.map(([v, l]) => (
+                    <option key={v} value={v}>
+                      {l}
+                    </option>
+                  ))}
+                </Select>
+                {filtering && (
+                  <>
+                    <span className="text-[13px] text-mute">{matchCount} match</span>
+                    <button
+                      onClick={() => {
+                        setQ("");
+                        setCategory("");
+                        setStakeholder("");
+                        setSinceDays("");
+                        setExpanded(new Set());
+                      }}
+                      className="flex items-center gap-1 text-[13px] text-mute hover:text-fg"
+                    >
+                      <X className="h-3.5 w-3.5" /> Clear
+                    </button>
+                  </>
                 )}
               </div>
-            )}
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function MiniStat({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
-  return (
-    <div className="rounded-2xl border border-line bg-panel/80 px-4 py-3">
-      <div className="text-[10.5px] uppercase tracking-[0.08em] text-mute">{label}</div>
-      <div className="mt-1 truncate text-lg font-semibold text-white">{value}</div>
-      {hint && <div className="text-[10.5px] text-mute">{hint}</div>}
-    </div>
-  );
-}
+              {missing && <div className="rounded-xl bg-warn/10 px-4 py-2.5 text-[13px] text-warn">The linked memory is no longer in this account's bank (Hindsight may have consolidated it).</div>}
 
-function ScoreBars({ h, maxKeyword }: { h: MemoryHit; maxKeyword: number }) {
-  const rows: [string, number | null | undefined][] = [
-    ["final", h.score],
-    ["semantic", h.scoreBreakdown?.semantic],
-    ["keyword", h.scoreBreakdown?.keyword],
-    ["rerank", h.scoreBreakdown?.reranker],
-  ];
-  return (
-    <div className="space-y-1 pt-1">
-      {rows
-        .filter(([, v]) => v != null)
-        .map(([k, v]) => (
-          <div key={k} className="flex items-center gap-2 text-[10px] text-mute">
-            <span className="w-12">{k}</span>
-            <div className="h-1 flex-1 overflow-hidden rounded bg-white/5">
-              {/* keyword is an unbounded BM25 score, so scale it against the best hit in this result set */}
-              <div className={clsx("h-full", k === "final" ? "bg-mem" : "bg-accent-2/70")} style={{ width: `${Math.max(2, Math.min(100, ((v as number) / (k === "keyword" ? maxKeyword : 1)) * 100))}%` }} />
+              {data.total === 0 ? (
+                <div className="rounded-2xl border border-dashed border-line-2 px-6 py-16 text-center text-[14px] text-mute">
+                  Nothing remembered about {data.customer.name} yet. Log a conversation or upload a document on the customer page.
+                </div>
+              ) : (
+                <div className={clsx("grid gap-5", selected && "xl:grid-cols-[minmax(0,1fr)_380px]")}>
+                  <div className="h-[calc(100vh-330px)] min-h-[560px] min-w-0 overflow-hidden rounded-2xl border border-line bg-panel shadow-card">
+                    <KnowledgeMap data={data} filters={filters} expanded={expanded} onToggle={toggle} selected={selected} onSelect={select} focusCategory={focusCategory} dark={dark} />
+                  </div>
+                  {selected && (
+                    <aside className="h-[calc(100vh-330px)] min-h-[560px] min-w-0 overflow-hidden rounded-2xl border border-mem/30 bg-panel shadow-card">
+                      <MemoryDetail data={data} id={selected} onSelect={select} onClose={() => setSelected(null)} dark={dark} />
+                    </aside>
+                  )}
+                </div>
+              )}
+              <p className="text-[12.5px] text-mute">Click a category to expand it, a memory to see its source and relationships. Drag to pan, scroll to zoom.</p>
             </div>
-            <span className="w-8 text-right font-mono">{(v as number).toFixed(2)}</span>
-          </div>
-        ))}
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

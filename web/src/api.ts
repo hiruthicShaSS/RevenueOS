@@ -16,11 +16,12 @@ export const SIGNED_OUT_EVENT = "revenueos:signed-out";
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   const headers: Record<string, string> = {};
-  if (body) headers["Content-Type"] = "application/json";
+  const isForm = body instanceof FormData;
+  if (body && !isForm) headers["Content-Type"] = "application/json";
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   try {
-    res = await fetch(`/api${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    res = await fetch(`/api${path}`, { method, headers, body: isForm ? body : body ? JSON.stringify(body) : undefined });
   } catch {
     throw new ApiError(0, "Cannot reach the RevenueOS API. Is the server running on port 4000?");
   }
@@ -40,6 +41,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 export const api = {
   get: <T>(p: string) => req<T>("GET", p),
   post: <T>(p: string, b?: unknown) => req<T>("POST", p, b ?? {}),
+  upload: <T>(p: string, form: FormData) => req<T>("POST", p, form),
 };
 
 // ---- shared types (mirror the server responses) ----
@@ -126,6 +128,8 @@ export interface Analysis {
   offers: { description: string; discount_pct: number | null; response: string }[];
   commitments: { owner: string; promised_to: string | null; description: string; due_date: string | null; direction: string }[];
   requirements: string[];
+  repeated_facts?: string[];
+  source?: { fileName: string; format: string; pages: number | null; truncated: boolean } | null;
   connections: { memory_ref: string; explanation: string; memory: MemoryHit }[];
   contradictions: { previously: string; now: string; significance: string; memory: MemoryHit | null }[];
   primary_blocker: string | null;
@@ -133,6 +137,25 @@ export interface Analysis {
   sentiment: string;
   next_actions: { action: string; owner: string | null; why: string }[];
   recalled?: number;
+}
+
+export interface DocPreview {
+  draftId: string;
+  file: { name: string; format: string; pages: number | null; truncated: boolean; characters: number };
+  documentDate: string | null;
+  excerpt: string;
+  identification: {
+    customer: { id: string; name: string } | null;
+    confidence: "high" | "medium" | "ambiguous" | "none";
+    reasons: string[];
+    candidates: { id: string; name: string; score: number; reasons: string[] }[];
+  } | null;
+  needsCustomer: boolean;
+  customer: { id: string; name: string } | null;
+  occurredAt: string | null;
+  recalledCount: number;
+  recallError: string | null;
+  analysis: Analysis | null;
 }
 
 export interface IngestResult {
@@ -172,10 +195,11 @@ export interface Brief {
   headline: string;
   stated_blocker?: string | null;
   real_blocker: string;
+  memory_reveals?: { text: string; evidence: string[] } | null;
   verdict: "hold" | "proceed" | "adjust";
   proposal_assessment?: string | null;
   do_not: { action: string; why: string; evidence: string[] }[];
-  strategy: { step: string; why: string; evidence: string[] }[];
+  strategy: { step: string; why: string; owner?: string | null; evidence: string[] }[];
   risks: { risk: string; severity: string; evidence: string[] }[];
   stakeholder_plan: { name: string; approach: string; evidence: string[] }[];
   playbook_insight?: { text: string; evidence: string[] } | null;
@@ -186,6 +210,7 @@ export interface BriefResult {
   empty: boolean;
   message?: string;
   brief?: Brief;
+  customer?: { id: string; name: string };
   evidence: Evidence;
   recalled?: { account: number; playbook: number };
   contributors?: Contributor[];

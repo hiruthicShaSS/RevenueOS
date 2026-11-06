@@ -1,6 +1,6 @@
 import { HindsightClient, HindsightError } from "@vectorize-io/hindsight-client";
 import { config } from "../config.js";
-import type { MemoryHit, MemoryStore, MentalModel, RetainOptions, ReflectResult } from "./types.js";
+import type { GraphLink, GraphNode, MemoryHit, MemoryStore, MentalModel, RetainOptions, ReflectResult, StoredDocument } from "./types.js";
 
 /**
  * Real Hindsight-backed memory.
@@ -203,6 +203,59 @@ export class HindsightStore implements MemoryStore {
       if (e instanceof HindsightError && e.statusCode === 404) return { items: [], total: 0 };
       throw e;
     }
+  }
+
+  /**
+   * GET /v1/default/banks/{bank}/graph: every memory unit and the links Hindsight recorded between
+   * them (semantic, temporal, entity, caused_by). The client SDK has no wrapper for it yet.
+   */
+  async graph(bankId: string, opts?: { limit?: number }) {
+    const url = `${config.hindsight.baseUrl.replace(/\/$/, "")}/v1/default/banks/${encodeURIComponent(bankId)}/graph?limit=${opts?.limit ?? 500}`;
+    const r = await fetch(url, { headers: config.hindsight.apiKey ? { Authorization: `Bearer ${config.hindsight.apiKey}` } : {} });
+    if (r.status === 404) return { nodes: [], links: [], total: 0 };
+    if (!r.ok) throw new Error(`Hindsight graph failed (${r.status}): ${(await r.text()).slice(0, 200)}`);
+    const j: any = await r.json();
+    const nodes: GraphNode[] = (j.table_rows ?? []).map((m: any) => ({
+      id: m.id,
+      text: m.text ?? "",
+      type: m.fact_type ?? null,
+      context: m.context && m.context !== "N/A" ? m.context : null,
+      occurredAt: m.occurred_start ?? m.mentioned_at ?? null,
+      documentId: m.document_id ?? null,
+      tags: m.tags ?? [],
+      entities: m.entities ? String(m.entities).split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+      score: null,
+      proofCount: m.proof_count ?? null,
+    }));
+    const ids = new Set(nodes.map((n) => n.id));
+    const links: GraphLink[] = (j.edges ?? [])
+      .map((e: any) => e.data ?? e)
+      .filter((e: any) => ids.has(e.source) && ids.has(e.target))
+      .map((e: any) => ({ source: e.source, target: e.target, type: e.linkType ?? e.link_type ?? "related", weight: Number(e.weight ?? 1), entity: e.entityName || null }));
+    return { nodes, links, total: Number(j.total_units ?? nodes.length) };
+  }
+
+  async listDocuments(bankId: string, opts?: { limit?: number; withText?: boolean }): Promise<StoredDocument[]> {
+    let items: any[];
+    try {
+      items = (await this.client.listDocuments(bankId, { limit: opts?.limit ?? 200 })).items ?? [];
+    } catch (e) {
+      if (e instanceof HindsightError && e.statusCode === 404) return [];
+      throw e;
+    }
+    const full = opts?.withText ? await Promise.all(items.map((d) => this.client.getDocument(bankId, d.id).catch(() => null))) : [];
+    return items.map((d, i) => {
+      const f: any = full[i];
+      return {
+        id: d.id,
+        text: f?.original_text ?? "",
+        tags: d.tags ?? [],
+        metadata: (f?.document_metadata ?? d.document_metadata ?? null) as Record<string, string> | null,
+        createdAt: d.created_at ?? null,
+        eventDate: d.retain_params?.event_date ?? null,
+        memoryCount: d.memory_unit_count ?? null,
+      };
+    });
   }
 
   async listMentalModels(bankId: string): Promise<MentalModel[]> {

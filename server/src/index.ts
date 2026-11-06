@@ -14,7 +14,10 @@ import { negotiationBrief } from "./services/negotiator.js";
 import { ask } from "./services/ask.js";
 import { overview } from "./services/dashboard.js";
 import { LoginBody, login, logout, userFromToken, type User } from "./services/auth.js";
-import { getPlaybook, recordOutcome, refreshPlaybookModel } from "./services/playbook.js";
+import { getPlaybook, outcomeDraft, recordOutcome, refreshPlaybookModel } from "./services/playbook.js";
+import { analyzeDraft, confirmDraft, discardDraft, extractDocument } from "./services/documents.js";
+import { memoryMap } from "./services/memoryMap.js";
+import multer from "multer";
 import { demoScript, resetDemoAccount, seedDatabase, seedMemory, DEMO_CUSTOMER_ID } from "./seed.js";
 
 const app = express();
@@ -98,6 +101,29 @@ app.post(
 );
 app.post("/api/interactions/:id/retry-memory", h(async (req) => retryRetain(String(req.params.id))));
 
+// ---------- document uploads (preview, then confirm) ----------
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
+app.post(
+  "/api/documents/extract",
+  upload.single("file"),
+  h(async (req, res) => {
+    if (!req.file) throw new HttpError(400, "Attach a file.");
+    // Browsers send multipart filenames as latin1; restore UTF-8 names.
+    const originalname = Buffer.from(req.file.originalname, "latin1").toString("utf8");
+    const b = z.object({ customerId: z.string().optional(), occurredAt: z.string().optional() }).parse(req.body ?? {});
+    return extractDocument({ originalname, buffer: req.file.buffer }, userOf(res), { customerId: b.customerId || undefined, occurredAt: b.occurredAt || undefined });
+  })
+);
+app.post(
+  "/api/documents/:draftId/analyze",
+  h(async (req, res) => {
+    const b = z.object({ customerId: z.string(), occurredAt: z.string().optional() }).parse(req.body);
+    return analyzeDraft(String(req.params.draftId), userOf(res), b.customerId, b.occurredAt);
+  })
+);
+app.post("/api/documents/:draftId/confirm", h(async (req, res) => confirmDraft(String(req.params.draftId), userOf(res))));
+app.post("/api/documents/:draftId/discard", h(async (req, res) => discardDraft(String(req.params.draftId), userOf(res))));
+
 // ---------- negotiation ----------
 app.post(
   "/api/customers/:id/negotiate",
@@ -107,6 +133,7 @@ app.post(
 );
 
 // ---------- memory explorer ----------
+app.get("/api/customers/:id/memory-map", h(async (req) => memoryMap(String(req.params.id))));
 app.get(
   "/api/customers/:id/memory",
   h(async (req) => {
@@ -117,7 +144,8 @@ app.get(
     let total = 0;
     let error: string | null = null;
     try {
-      const r = await memory.list(bank, { limit: 300 });
+      const q = z.object({ limit: z.coerce.number().int().min(1).max(500).optional(), type: z.string().optional() }).parse(req.query);
+      const r = await memory.list(bank, { limit: q.limit ?? 300, type: q.type });
       items = r.items;
       total = r.total;
     } catch (e) {
@@ -202,6 +230,11 @@ app.post(
   })
 );
 
+app.post(
+  "/api/deals/:id/outcome-draft",
+  h(async (req) => outcomeDraft(String(req.params.id), z.object({ outcome: z.enum(["won", "lost"]) }).parse(req.body).outcome))
+);
+
 // ---------- demo ----------
 app.get("/api/demo/script", h(async () => demoScript()));
 app.post("/api/demo/reset", h(async () => (await resetDemoAccount(), { ok: true, customerId: DEMO_CUSTOMER_ID })));
@@ -221,6 +254,8 @@ app.use("/api", (_req, _res, next) => next(new HttpError(404, "Not found")));
 // ---------- errors ----------
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid request", issues: err.issues });
+  if (err instanceof multer.MulterError)
+    return res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "File is larger than 10 MB." : err.message });
   if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
   if (err instanceof LlmError) return res.status(502).json({ error: err.message });
   console.error(err);

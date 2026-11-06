@@ -6,7 +6,7 @@ import { errMsg } from "../memory/hindsightStore.js";
 import { id, isoDate, weekday, HttpError } from "../util.js";
 import { getAccountSnapshot, snapshotToText } from "./repo.js";
 
-export const INTERACTION_KINDS = ["meeting", "call", "email", "note", "follow_up"] as const;
+export const INTERACTION_KINDS = ["meeting", "call", "email", "note", "follow_up", "document"] as const;
 
 const Stance = z.enum(["champion", "supporter", "neutral", "skeptic", "blocker", "unknown"]).catch("unknown");
 const ObjCat = z
@@ -45,6 +45,7 @@ export const AnalysisSchema = z.object({
   fulfilled_commitment_ids: z.array(z.string()).default([]),
   resolved_objection_ids: z.array(z.string()).default([]),
   requirements: z.array(z.string()).default([]),
+  repeated_facts: z.array(z.string()).default([]),
   connections: z.array(z.object({ memory_ref: z.string(), explanation: z.string() })).default([]),
   contradictions: z
     .array(z.object({ previously: z.string(), now: z.string(), memory_ref: nullableStr, significance: z.string() }))
@@ -62,6 +63,8 @@ export interface IngestInput {
   kind: (typeof INTERACTION_KINDS)[number];
   text: string;
   occurredAt?: string;
+  /** Set for uploaded documents: provenance carried into the CRM row and Hindsight. */
+  source?: { fileName: string; format: string; pages: number | null; truncated: boolean };
 }
 
 /**
@@ -72,6 +75,13 @@ export interface IngestInput {
  *  4. retain the interaction into the customer's Hindsight bank (facts, entities, time)
  */
 export async function ingestInteraction(input: IngestInput) {
+  return persistInteraction(await analyzeInteraction(input));
+}
+
+export type AnalyzedInteraction = Awaited<ReturnType<typeof analyzeInteraction>>;
+
+/** Steps 1-2: recall + extraction. Writes nothing, so uploads can be previewed before confirming. */
+export async function analyzeInteraction(input: IngestInput) {
   const db = await getDb();
   const text = input.text.trim();
   if (text.length < 15) throw new HttpError(400, "Interaction text is too short to analyse.");
@@ -106,6 +116,12 @@ export async function ingestInteraction(input: IngestInput) {
       "if discounts were offered and rejected while non-price concerns keep coming up, price is probably not the real blocker.",
     user: [
       `Today the rep logging this is ${rep.name} (${rep.title}). Interaction type: ${input.kind}.`,
+      ...(input.source
+        ? [
+            `This is an UPLOADED DOCUMENT ("${input.source.fileName}", ${input.source.format}${input.source.pages ? `, ${input.source.pages} pages` : ""}). It may be a transcript, email, proposal or notes: extract only what it actually states.`,
+            `Where the text has [Page N] or [Section: ...] markers, end each fact, objection description and commitment description with its reference in parentheses, e.g. "(p. 2)".`,
+          ]
+        : []),
       `Interaction date: ${isoDate(occurredAt)} (${weekday(occurredAt)}). Resolve relative due dates such as "by Friday" against this date and output YYYY-MM-DD.`,
       ``,
       `STRUCTURED CRM STATE BEFORE THIS INTERACTION:`,
@@ -120,7 +136,7 @@ export async function ingestInteraction(input: IngestInput) {
       `"""${text}"""`,
       ``,
       `Return JSON with keys:`,
-      `summary (1-2 sentences), facts (atomic durable facts), stakeholders [{name, role, stance, priorities}],`,
+      `summary (1-2 sentences), facts (atomic durable facts that are NEW, i.e. not already in long-term memory), repeated_facts (facts this interaction states that memory already had; append the ref, e.g. "... [M3]"), stakeholders [{name, role, stance, priorities}],`,
       `objections [{category: pricing|integration|implementation|security|competition|timing|authority|product_gap|other, description, raised_by}],`,
       `offers [{description, discount_pct, response: accepted|rejected|pending|countered}] — include offers the customer responds to in this interaction,`,
       `commitments [{owner, promised_to, description, due_date (YYYY-MM-DD or null), direction: ours|theirs}] — only NEW promises made in this interaction; never repeat one already in the CRM list or one this interaction says was delivered,`,
@@ -142,13 +158,20 @@ export async function ingestInteraction(input: IngestInput) {
     ...c,
     memory: c.memory_ref ? refMap.get(c.memory_ref) ?? null : null,
   }));
+  return { input, text, occurredAt, snapshot, rep, customer, bank, prior, recallError, analysis, connections, contradictions };
+}
+
+/** Steps 3-4: persist structured CRM data and retain the interaction into Hindsight. */
+export async function persistInteraction(a: AnalyzedInteraction) {
+  const db = await getDb();
+  const { input, text, occurredAt, snapshot, rep, customer, bank, prior, recallError, analysis, connections, contradictions } = a;
 
   // 3. Persist structured data.
   const interactionId = id("int");
   await db.query(
     `INSERT INTO interactions (id, customer_id, rep_id, kind, occurred_at, raw_text, analysis, memory_status)
      VALUES ($1,$2,$3,$4,$5,$6,$7,'pending')`,
-    [interactionId, customer.id, rep.id, input.kind, occurredAt.toISOString(), text, JSON.stringify({ ...analysis, connections, contradictions, recalled: prior.length, recallError })]
+    [interactionId, customer.id, rep.id, input.kind, occurredAt.toISOString(), text, JSON.stringify({ ...analysis, connections, contradictions, recalled: prior.length, recallError, source: input.source ?? null })]
   );
 
   for (const s of analysis.stakeholders) {
@@ -219,6 +242,7 @@ export async function ingestInteraction(input: IngestInput) {
       occurredAt: occurredAt.toISOString(),
       text,
       stakeholderNames: analysis.stakeholders.map((s) => s.name),
+      source: input.source,
     });
   } catch (e) {
     memoryStatus = "failed";
@@ -258,20 +282,29 @@ export async function retainInteraction(p: {
   occurredAt: string;
   text: string;
   stakeholderNames: string[];
+  source?: { fileName: string; format: string; pages: number | null };
 }) {
   const label = p.kind.replace("_", " ");
+  const header = p.source
+    ? `Document "${p.source.fileName}" about ${p.customerName}, dated ${p.occurredAt.slice(0, 10)}, uploaded by our rep ${p.repName} (${p.repTitle}):`
+    : `${label[0].toUpperCase()}${label.slice(1)} with ${p.customerName} on ${p.occurredAt.slice(0, 10)}, logged by our rep ${p.repName} (${p.repTitle}):`;
   await memory.retain(
     p.bank,
-    `${label[0].toUpperCase()}${label.slice(1)} with ${p.customerName} on ${p.occurredAt.slice(0, 10)}, logged by our rep ${p.repName} (${p.repTitle}):\n${p.text}`,
+    `${header}\n${p.text}`,
     {
-      context: `${label} notes — ${p.customerName} account`,
+      context: p.source ? `uploaded document ${p.source.fileName} — ${p.customerName} account` : `${label} notes — ${p.customerName} account`,
       timestamp: p.occurredAt,
       documentId: p.interactionId,
-      tags: [`kind:${p.kind}`, `rep:${p.repName}`],
+      tags: [`kind:${p.kind}`, `rep:${p.repName}`, ...(p.source ? [`file:${p.source.fileName.slice(0, 80)}`] : [])],
       // Only the account itself. Entities passed here are attached to every fact extracted from
       // this interaction, so people are left to Hindsight's per-fact entity extraction instead.
       entities: [{ text: p.customerName, type: "ORGANIZATION" }],
-      metadata: { interaction_id: p.interactionId, rep: p.repName, kind: p.kind },
+      metadata: {
+        interaction_id: p.interactionId,
+        rep: p.repName,
+        kind: p.kind,
+        ...(p.source ? { source_file: p.source.fileName, source_format: p.source.format, ...(p.source.pages ? { pages: String(p.source.pages) } : {}) } : {}),
+      },
     }
   );
 }
@@ -297,6 +330,7 @@ export async function retryRetain(interactionId: string) {
       occurredAt: new Date(row.occurred_at).toISOString(),
       text: row.raw_text,
       stakeholderNames: (row.analysis?.stakeholders ?? []).map((s: any) => s.name),
+      source: row.analysis?.source ?? undefined,
     });
     await db.query(`UPDATE interactions SET memory_status='stored', memory_error=NULL WHERE id=$1`, [interactionId]);
     return { ok: true };

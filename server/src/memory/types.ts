@@ -42,6 +42,30 @@ export interface MentalModel {
   lastRefreshedAt: string | null;
 }
 
+/** One memory unit in Hindsight's graph view of a bank. */
+export interface GraphNode extends MemoryHit {
+  proofCount: number | null;
+}
+/** A relationship Hindsight recorded between two memories. */
+export interface GraphLink {
+  source: string;
+  target: string;
+  /** semantic | temporal | entity | caused_by | ... */
+  type: string;
+  weight: number;
+  entity: string | null;
+}
+
+export interface StoredDocument {
+  id: string;
+  text: string;
+  tags: string[];
+  metadata: Record<string, string> | null;
+  createdAt: string | null;
+  eventDate: string | null;
+  memoryCount: number | null;
+}
+
 export interface MemoryStore {
   readonly mode: "hindsight" | "mock";
   health(): Promise<{ ok: boolean; detail: string }>;
@@ -68,6 +92,11 @@ export interface MemoryStore {
     bankId: string,
     opts?: { limit?: number; offset?: number; type?: string; q?: string }
   ): Promise<{ items: MemoryHit[]; total: number }>;
+
+  /** Every memory unit in the bank plus the links Hindsight recorded between them. */
+  graph(bankId: string, opts?: { limit?: number }): Promise<{ nodes: GraphNode[]; links: GraphLink[]; total: number }>;
+  /** Original retained documents (the text as written, before fact extraction). */
+  listDocuments(bankId: string, opts?: { limit?: number; withText?: boolean }): Promise<StoredDocument[]>;
 
   listMentalModels(bankId: string): Promise<MentalModel[]>;
   ensureMentalModel(bankId: string, id: string, name: string, sourceQuery: string): Promise<void>;
